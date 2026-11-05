@@ -23,7 +23,12 @@ st.title("📊 Transactions Tracker")
 def fetch_data():
     try:
         response = supabase.table("transactions").select("*").order("date", desc=False).execute()
-        return response.data or []
+        rows = response.data or []
+        # Ensure 'type' field exists in all rows to prevent KeyError
+        for r in rows:
+            if "type" not in r or not r["type"]:
+                r["type"] = "Sent"
+        return rows
     except Exception as e:
         st.error(f"Error fetching data: {e}")
         return []
@@ -32,8 +37,8 @@ data = fetch_data()
 
 # Calculate Totals
 total = sum([float(t["amount"]) for t in data]) if data else 0
-total_takes = sum([float(t["amount"]) for t in data if t.get("type", "Sent") == "Received" or float(t["amount"]) > 0]) if data else 0
-total_gives = sum([float(t["amount"]) for t in data if t.get("type", "Sent") == "Sent" or float(t["amount"]) < 0]) if data else 0
+total_takes = sum([float(t["amount"]) for t in data if t.get("type") == "Received" or float(t["amount"]) > 0]) if data else 0
+total_gives = sum([float(t["amount"]) for t in data if t.get("type") == "Sent" or float(t["amount"]) < 0]) if data else 0
 
 # --- TOTAL BALANCE & SUMMARY ---
 st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
@@ -171,10 +176,15 @@ st.markdown("---")
 # --- SPREADSHEET TABLE VIEW ---
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
-    st.write("### Transaction Spreadsheet")
+    st.write("### Transactions")
 with col_h2:
     if data:
-        df_export = pd.DataFrame(data)[["date", "amount", "reason", "type", "screenshot"]]
+        df_export = pd.DataFrame(data)
+        for col in ["date", "amount", "reason", "type", "screenshot"]:
+            if col not in df_export.columns:
+                df_export[col] = ""
+        df_export = df_export[["date", "amount", "reason", "type", "screenshot"]]
+        
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df_export.to_excel(writer, index=False, sheet_name='Transactions')
@@ -187,64 +197,63 @@ with col_h2:
         )
 
 if data:
-    # Render spreadsheet-like clean table with alternating row colors
-    table_html = """
-    <div style="overflow-x: auto;">
-    <table style="width: 100%; border-collapse: collapse; background-color: #fff8dc; color: #000; font-family: sans-serif; font-size: 14px;">
-      <thead>
-        <tr style="background-color: #000; color: #fff; text-align: left;">
-          <th style="padding: 10px; border: 1px solid #ccc;">Date</th>
-          <th style="padding: 10px; border: 1px solid #ccc;">Amount</th>
-          <th style="padding: 10px; border: 1px solid #ccc;">Reason</th>
-          <th style="padding: 10px; border: 1px solid #ccc;">Type</th>
-          <th style="padding: 10px; border: 1px solid #ccc;">Screenshot</th>
-          <th style="padding: 10px; border: 1px solid #ccc; text-align: center;">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-    """
+    df_table = pd.DataFrame(data)
+    df_table['dt'] = pd.to_datetime(df_table['date'])
+    df_table['year_month'] = df_table['dt'].dt.to_period('M')
 
-    for idx, row in enumerate(data):
-        # Alternating background colors like reference image (light yellow and light blue/white)
-        row_bg = "#fffaf0" if idx % 2 == 0 else "#e6f2ff"
+    unique_months = df_table['year_month'].unique()
+    month_bg_map = {}
+    for idx, m in enumerate(unique_months):
+        month_bg_map[m] = "#fffaf0" if idx % 2 == 0 else "#e6f2ff"
+
+    # Table Headers
+    h_col1, h_col2, h_col3, h_col4, h_col5, h_col6 = st.columns([2, 2, 3, 2, 1.5, 2])
+    h_col1.markdown("**Date**")
+    h_col2.markdown("**Amount**")
+    h_col3.markdown("**Reason**")
+    h_col4.markdown("**Type**")
+    h_col5.markdown("**Receipt**")
+    h_col6.markdown("**Actions**")
+
+    st.markdown("<hr style='margin: 5px 0 10px 0;'>", unsafe_allow_html=True)
+
+    for _, row in df_table.iterrows():
+        bg_color = month_bg_map.get(row['year_month'], "#ffffff")
         t_type = row.get("type", "Sent")
         type_bg = "#2e7d32" if t_type == "Sent" else "#c62828"
-        
-        screenshot_link = f"<a href='{row['screenshot']}' target='_blank'>View</a>" if row["screenshot"] else "-"
-        
-        table_html += f"""
-        <tr style="background-color: {row_bg};">
-          <td style="padding: 8px; border: 1px solid #ccc;">{row["date"]}</td>
-          <td style="padding: 8px; border: 1px solid #ccc; font-weight: bold;">₹{float(row["amount"]):.2f}</td>
-          <td style="padding: 8px; border: 1px solid #ccc;">{row["reason"] or '-'}</td>
-          <td style="padding: 8px; border: 1px solid #ccc;">
-            <span style="background-color: {type_bg}; color: white; padding: 4px 12px; border-radius: 15px; font-weight: bold; font-size: 12px;">{t_type}</span>
-          </td>
-          <td style="padding: 8px; border: 1px solid #ccc;">{screenshot_link}</td>
-          <td style="padding: 8px; border: 1px solid #ccc; text-align: center;">
-        """
-        table_html += "</tr>"
 
-    table_html += "</tbody></table></div>"
-    st.markdown(table_html, unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div style="background-color: {bg_color}; padding: 6px 10px; border-radius: 4px; margin-bottom: 4px; border: 1px solid #d3d3d3; color: #000;">
+            """,
+            unsafe_allow_html=True
+        )
 
-    # Edit & Delete buttons below table for each row to avoid HTML form nesting issues
-    st.markdown("#### Manage Entries")
-    for row in data:
-        col_m1, col_m2, col_m3, col_m4 = st.columns([3, 2, 1, 1])
-        col_m1.write(f"{row['date']} | ₹{row['amount']} | {row['reason']}")
-        col_m2.write(f"Type: {row.get('type', 'Sent')}")
-        
-        if col_m3.button("✏️ Edit", key=f"edit_{row['id']}"):
-            st.session_state["edit_id"] = row["id"]
-            st.rerun()
-            
-        if col_m4.button("🗑️ Del", key=f"del_btn_{row['id']}"):
-            st.session_state[f"confirm_del_{row['id']}"] = True
-            st.rerun()
+        c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 2, 1.5, 2])
+
+        c1.write(str(row["date"]))
+        c2.markdown(f"**₹{float(row['amount']):.2f}**")
+        c3.write(row["reason"] or "-")
+        c4.markdown(f"<span style='background-color: {type_bg}; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 12px;'>{t_type}</span>", unsafe_allow_html=True)
+
+        if row["screenshot"]:
+            c5.markdown(f"[View]({row['screenshot']})")
+        else:
+            c5.write("-")
+
+        with c6:
+            e_col, d_col = st.columns(2)
+            if e_col.button("✏️", key=f"edit_{row['id']}"):
+                st.session_state["edit_id"] = row["id"]
+                st.rerun()
+            if d_col.button("🗑️", key=f"del_btn_{row['id']}"):
+                st.session_state[f"confirm_del_{row['id']}"] = True
+                st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
         if st.session_state.get(f"confirm_del_{row['id']}", False):
-            st.warning(f"Delete transaction '{row['reason']}'?")
+            st.warning(f"Delete transaction for '{row['reason']}'?")
             d1, d2 = st.columns(2)
             if d1.button("Yes, Delete", key=f"yes_del_{row['id']}"):
                 supabase.table("transactions").delete().eq("id", row["id"]).execute()
