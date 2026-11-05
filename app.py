@@ -76,7 +76,7 @@ st.markdown("---")
 st.write("### 📅 Monthly Summary")
 if data:
     df_sum = pd.DataFrame(data)
-    df_sum['dt'] = pd.to_datetime(df_sum['dt'].fillna(df_sum['date']))
+    df_sum['dt'] = pd.to_datetime(df_sum['date'])
     df_sum['year'] = df_sum['dt'].dt.year
     df_sum['month_name'] = df_sum['dt'].dt.strftime('%B %Y')
     df_sum['month_num'] = df_sum['dt'].dt.to_period('M').astype(str)
