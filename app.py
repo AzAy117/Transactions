@@ -185,19 +185,17 @@ if data:
 
     st.write("### Transactions Spreadsheet")
     
-    table_html = """
-    <div style="overflow-x: auto;">
-    <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; color: #000;">
-        <thead>
-            <tr style="background-color: #262730; color: white; text-align: left;">
-                <th style="padding: 10px; border: 1px solid #d3d3d3;">Date</th>
-                <th style="padding: 10px; border: 1px solid #d3d3d3;">Amount</th>
-                <th style="padding: 10px; border: 1px solid #d3d3d3;">Reason</th>
-                <th style="padding: 10px; border: 1px solid #d3d3d3;">Type</th>
-            </tr>
-        </thead>
-        <tbody>
-    """
+    table_html = """<div style="overflow-x: auto;">
+<table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; color: #000;">
+    <thead>
+        <tr style="background-color: #262730; color: white; text-align: left;">
+            <th style="padding: 10px; border: 1px solid #d3d3d3;">Date</th>
+            <th style="padding: 10px; border: 1px solid #d3d3d3;">Amount</th>
+            <th style="padding: 10px; border: 1px solid #d3d3d3;">Reason</th>
+            <th style="padding: 10px; border: 1px solid #d3d3d3;">Type</th>
+        </tr>
+    </thead>
+    <tbody>"""
 
     for _, row in df_table.iterrows():
         t_type = row.get("type", "Sent")
@@ -206,22 +204,19 @@ if data:
         amount_val = float(row['amount'])
         reason_val = row['reason'] or '-'
         
-        table_html += f"""
-            <tr style="background-color: {row_bg};">
-                <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">{row['date']}</td>
-                <td style="padding: 9px 10px; border: 1px solid #d3d3d3; font-weight: bold;">₹{amount_val:.2f}</td>
-                <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">{reason_val}</td>
-                <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">
-                    <span style="background-color: {badge_bg}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 11px;">{t_type}</span>
-                </td>
-            </tr>
-        """
+        table_html += f"""<tr style="background-color: {row_bg};">
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">{row['date']}</td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; font-weight: bold;">₹{amount_val:.2f}</td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">{reason_val}</td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">
+        <span style="background-color: {badge_bg}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 11px;">{t_type}</span>
+    </td>
+</tr>"""
 
-    table_html += """
-        </tbody>
-    </table>
-    </div>
-    """
+    table_html += """</tbody>
+</table>
+</div>"""
+    
     st.markdown(table_html, unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
