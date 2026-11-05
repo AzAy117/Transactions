@@ -172,77 +172,55 @@ with st.form("transaction_form", clear_on_submit=True):
         
         st.rerun()
 
-if edit_id:
-    if st.button("Cancel Edit", use_container_width=True):
-        st.session_state["edit_id"] = None
-        st.rerun()
-
-st.markdown("---")
-
-# --- SPREADSHEET TABLE VIEW & EXPORT ---
-col_h1, col_h2 = st.columns([2, 1])
-with col_h1:
-    st.write("### Transactions History")
-with col_h2:
-    if data:
-        df_export = pd.DataFrame(data)
-        for col in ["date", "amount", "reason", "type", "screenshot"]:
-            if col not in df_export.columns:
-                df_export[col] = ""
-        df_export = df_export[["date", "amount", "reason", "type", "screenshot"]]
-        
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df_export.to_excel(writer, index=False, sheet_name='Transactions')
-        st.download_button(
-            label="📥 Export Excel",
-            data=buffer.getvalue(),
-            file_name=f"Transactions_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
 if data:
     df_table = pd.DataFrame(data)
     df_table['dt'] = pd.to_datetime(df_table['date'])
     df_table['year_month'] = df_table['dt'].dt.to_period('M').astype(str)
 
-    # Table Headers
-    h_col1, h_col2, h_col3, h_col4, h_col5, h_col6 = st.columns([2, 2, 3, 2, 1.5, 2])
-    h_col1.markdown("**Date**")
-    h_col2.markdown("**Amount**")
-    h_col3.markdown("**Reason**")
-    h_col4.markdown("**Type**")
-    h_col5.markdown("**Receipt**")
-    h_col6.markdown("**Actions**")
+    unique_months = df_table['year_month'].unique()
+    month_bg_map = {}
+    for idx, m in enumerate(unique_months):
+        # Alternate background colors for months/entries distinction
+        month_bg_map[m] = "#f9f9f9" if idx % 2 == 0 else "#f0f4f8"
 
+    st.write("### Transactions History")
     st.markdown("<hr style='margin: 5px 0 10px 0;'>", unsafe_allow_html=True)
 
-    for _, row in df_table.iterrows():
+    for idx, row in df_table.iterrows():
         t_type = row.get("type", "Sent")
-        # Sent = Red (Gives), Received = Green (Takes)
-        type_bg = "#c62828" if t_type == "Sent" else "#2e7d32"
-
-        c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 2, 1.5, 2])
-
-        c1.write(str(row["date"]))
-        c2.markdown(f"**₹{float(row['amount']):.2f}**")
-        c3.write(row["reason"] or "-")
-        c4.markdown(f"<span style='background-color: {type_bg}; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 12px;'>{t_type}</span>", unsafe_allow_html=True)
-
+        type_color = "#c62828" if t_type == "Sent" else "#2e7d32"
+        bg_col = month_bg_map.get(row['year_month'], "#ffffff")
+        
+        # Clean mobile-friendly card design
+        st.markdown(
+            f"""
+            <div style="background-color: {bg_col}; padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #d3d3d3; color: #000;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 13px; color: #555; font-weight: bold;">📅 {row['date']}</span>
+                    <span style="background-color: {type_color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold;">{t_type}</span>
+                </div>
+                <div style="font-size: 18px; font-weight: bold; color: #000; margin-bottom: 4px;">₹{float(row['amount']):.2f}</div>
+                <div style="font-size: 14px; color: #333; margin-bottom: 8px;"><b>Reason:</b> {row['reason'] or '-'}</div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Receipt link if available
         if row.get("screenshot"):
-            c5.markdown(f"[View]({row['screenshot']})")
-        else:
-            c5.write("-")
+            st.markdown(f"📎 [View Receipt]({row['screenshot']})")
 
-        with c6:
-            e_col, d_col = st.columns(2)
-            if e_col.button("✏️", key=f"edit_{row['id']}"):
+        # Action buttons inside columns for edit/delete
+        col_act1, col_act2 = st.columns(2)
+        with col_act1:
+            if st.button("✏️ Edit", key=f"edit_{row['id']}", use_container_width=True):
                 st.session_state["edit_id"] = row["id"]
                 st.rerun()
-            if d_col.button("🗑️", key=f"del_btn_{row['id']}"):
+        with col_act2:
+            if st.button("🗑️ Delete", key=f"del_btn_{row['id']}", use_container_width=True):
                 st.session_state[f"confirm_del_{row['id']}"] = True
                 st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
         if st.session_state.get(f"confirm_del_{row['id']}", False):
             st.warning(f"Delete transaction for '{row.get('reason', '')}'?")
@@ -254,7 +232,5 @@ if data:
             if d2.button("Cancel", key=f"cancel_del_{row['id']}"):
                 st.session_state[f"confirm_del_{row['id']}"] = False
                 st.rerun()
-        
-        st.markdown("<hr style='margin: 5px 0; border: 0.5px solid #eee;'>", unsafe_allow_html=True)
 else:
     st.info("No transactions found yet.")
