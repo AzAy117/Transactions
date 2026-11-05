@@ -135,7 +135,6 @@ with st.form("transaction_form", clear_on_submit=True):
     with col_f3:
         reason_val = st.text_input("Reason", value=default_reason)
     with col_f4:
-        # Informational display based on amount sign
         auto_type = "Sent" if amount_val >= 0 else "Received"
         st.write(f"**Type:** {auto_type} (auto)")
 
@@ -188,7 +187,7 @@ st.write("### Transactions Spreadsheet")
 if data:
     df_table = pd.DataFrame(data)
     
-    # Only 2 alternating colors: light blue (#e6f2ff) and pinkish/purple (#f3e8ff)
+    # Only 2 alternating colors: light blue and pinkish/purple
     bg_colors = ["#e6f2ff", "#f3e8ff"]
 
     # Table Header
@@ -208,25 +207,27 @@ if data:
         t_type = "Sent" if amount_val >= 0 else "Received"
         badge_bg = "#2e7d32" if t_type == "Sent" else "#c62828"
         
-        # Alternate between the 2 colors only
+        # Negative amount = Green text, Positive amount = Red text
+        amount_color = "#2e7d32" if amount_val < 0 else "#c62828"
+        
+        # Alternate between 2 background colors
         row_bg = bg_colors[idx % len(bg_colors)]
 
-        # Row container styling for spreadsheet look
         row_cols = st.columns([2, 2, 3, 1.5, 1.5, 1, 1], vertical_alignment="center")
 
         with row_cols[0]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'>{row['date']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px; color: #000;'>{row['date']}</div>", unsafe_allow_html=True)
         with row_cols[1]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><b>₹{amount_val:.2f}</b></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><b style='color: {amount_color};'>₹{amount_val:.2f}</b></div>", unsafe_allow_html=True)
         with row_cols[2]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'>{row['reason'] or '-'}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px; color: #000;'>{row['reason'] or '-'}</div>", unsafe_allow_html=True)
         with row_cols[3]:
             st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><span style='background-color: {badge_bg}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold;'>{t_type}</span></div>", unsafe_allow_html=True)
         with row_cols[4]:
             if row.get("screenshot"):
                 st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><a href='{row['screenshot']}' target='_blank'>View</a></div>", unsafe_allow_html=True)
             else:
-                st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'>-</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px; color: #000;'>-</div>", unsafe_allow_html=True)
         with row_cols[5]:
             if st.button("✏️", key=f"edit_{row['id']}"):
                 st.session_state["edit_id"] = row["id"]
