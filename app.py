@@ -250,7 +250,7 @@ if data:
                 supabase.table("transactions").delete().eq("id", row["id"]).execute()
                 st.session_state[f"confirm_del_{row['id']}"] = False
                 st.rerun()
-            if d2.button("Cancel", key=f"cancel_del_{row['id']}">):
+            if d2.button("Cancel", key=f"cancel_del_{row['id']}"):
                 st.session_state[f"confirm_del_{row['id']}"] = False
                 st.rerun()
 else:
