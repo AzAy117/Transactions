@@ -179,48 +179,68 @@ if data:
 
     unique_months = df_table['year_month'].unique()
     month_bg_map = {}
+    # Alternate colors matching the spreadsheet look in the image
+    colors = ["#fdf6e2", "#e6f2ff", "#f3e8ff", "#e8f8f5"]
     for idx, m in enumerate(unique_months):
-        # Alternate background colors for months/entries distinction
-        month_bg_map[m] = "#f9f9f9" if idx % 2 == 0 else "#f0f4f8"
+        month_bg_map[m] = colors[idx % len(colors)]
 
-    st.write("### Transactions History")
-    st.markdown("<hr style='margin: 5px 0 10px 0;'>", unsafe_allow_html=True)
+    st.write("### Transactions Spreadsheet")
+    
+    # Build clean HTML Spreadsheet Table matching the screenshot style
+    table_html = """
+    <div style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; color: #000;">
+        <thead>
+            <tr style="background-color: #262730; color: white; text-align: left;">
+                <th style="padding: 10px; border: 1px solid #d3d3d3;">Date</th>
+                <th style="padding: 10px; border: 1px solid #d3d3d3;">Amount</th>
+                <th style="padding: 10px; border: 1px solid #d3d3d3;">Reason</th>
+                <th style="padding: 10px; border: 1px solid #d3d3d3;">Type</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
 
-    for idx, row in df_table.iterrows():
+    for _, row in df_table.iterrows():
         t_type = row.get("type", "Sent")
-        type_color = "#c62828" if t_type == "Sent" else "#2e7d32"
-        bg_col = month_bg_map.get(row['year_month'], "#ffffff")
+        badge_bg = "#2e7d32" if t_type == "Sent" else "#c62828"
+        row_bg = month_bg_map.get(row['year_month'], "#ffffff")
+        amount_val = float(row['amount'])
+        reason_val = row['reason'] or '-'
         
-        # Clean mobile-friendly card design
-        st.markdown(
-            f"""
-            <div style="background-color: {bg_col}; padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #d3d3d3; color: #000;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-size: 13px; color: #555; font-weight: bold;">📅 {row['date']}</span>
-                    <span style="background-color: {type_color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold;">{t_type}</span>
-                </div>
-                <div style="font-size: 18px; font-weight: bold; color: #000; margin-bottom: 4px;">₹{float(row['amount']):.2f}</div>
-                <div style="font-size: 14px; color: #333; margin-bottom: 8px;"><b>Reason:</b> {row['reason'] or '-'}</div>
-            """,
-            unsafe_allow_html=True
-        )
-        
-        # Receipt link if available
-        if row.get("screenshot"):
-            st.markdown(f"📎 [View Receipt]({row['screenshot']})")
+        table_html += f"""
+            <tr style="background-color: {row_bg};">
+                <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">{row['date']}</td>
+                <td style="padding: 9px 10px; border: 1px solid #d3d3d3; font-weight: bold;">₹{amount_val:.2f}</td>
+                <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">{reason_val}</td>
+                <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">
+                    <span style="background-color: {badge_bg}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 11px;">{t_type}</span>
+                </td>
+            </tr>
+        """
 
-        # Action buttons inside columns for edit/delete
-        col_act1, col_act2 = st.columns(2)
-        with col_act1:
+    table_html += """
+        </tbody>
+    </table>
+    </div>
+    """
+    st.markdown(table_html, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.write("#### Manage Transactions (Edit / Delete)")
+
+    for _, row in df_table.iterrows():
+        cols = st.columns([3, 1, 1])
+        with cols[0]:
+            st.write(f"📅 {row['date']} | **₹{float(row['amount']):.2f}** | {row['reason'] or '-'}")
+        with cols[1]:
             if st.button("✏️ Edit", key=f"edit_{row['id']}", use_container_width=True):
                 st.session_state["edit_id"] = row["id"]
                 st.rerun()
-        with col_act2:
-            if st.button("🗑️ Delete", key=f"del_btn_{row['id']}", use_container_width=True):
+        with cols[2]:
+            if st.button("🗑️ Delete", key=f"del_{row['id']}", use_container_width=True):
                 st.session_state[f"confirm_del_{row['id']}"] = True
                 st.rerun()
-
-        st.markdown("</div>", unsafe_allow_html=True)
 
         if st.session_state.get(f"confirm_del_{row['id']}", False):
             st.warning(f"Delete transaction for '{row.get('reason', '')}'?")
