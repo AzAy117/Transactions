@@ -179,14 +179,14 @@ if data:
 
     unique_months = df_table['year_month'].unique()
     month_bg_map = {}
-    # Alternate colors matching the spreadsheet look in the image
     colors = ["#fdf6e2", "#e6f2ff", "#f3e8ff", "#e8f8f5"]
+    
+    # Map each unique month to a specific alternating background color
     for idx, m in enumerate(unique_months):
         month_bg_map[m] = colors[idx % len(colors)]
 
     st.write("### Transactions Spreadsheet")
     
-    # Build clean HTML Spreadsheet Table matching the screenshot style
     table_html = """
     <div style="overflow-x: auto;">
     <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; color: #000;">
@@ -204,7 +204,10 @@ if data:
     for _, row in df_table.iterrows():
         t_type = row.get("type", "Sent")
         badge_bg = "#2e7d32" if t_type == "Sent" else "#c62828"
+        
+        # Consistent background color for the same month
         row_bg = month_bg_map.get(row['year_month'], "#ffffff")
+        
         amount_val = float(row['amount'])
         reason_val = row['reason'] or '-'
         
