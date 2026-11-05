@@ -25,8 +25,9 @@ def fetch_data():
         response = supabase.table("transactions").select("*").order("date", desc=False).execute()
         rows = response.data or []
         for r in rows:
-            if "type" not in r or not r["type"]:
-                r["type"] = "Sent"
+            amt = float(r.get("amount", 0))
+            # Positive amount = Sent, Negative amount = Received
+            r["type"] = "Sent" if amt >= 0 else "Received"
         return rows
     except Exception as e:
         st.error(f"Error fetching data: {e}")
@@ -34,7 +35,7 @@ def fetch_data():
 
 data = fetch_data()
 
-# Calculate Totals strictly based on 'type'
+# Calculate Totals strictly based on updated 'type'
 total_takes = sum([float(t["amount"]) for t in data if t.get("type") == "Received"]) if data else 0
 total_gives = sum([float(t["amount"]) for t in data if t.get("type") == "Sent"]) if data else 0
 total = total_takes - total_gives
@@ -130,11 +131,13 @@ with st.form("transaction_form", clear_on_submit=True):
     with col_f1:
         date_val = st.date_input("Date", value=default_date)
     with col_f2:
-        amount_val = st.number_input("Amount", value=default_amount, step=0.01, min_value=0.0)
+        amount_val = st.number_input("Amount", value=default_amount, step=0.01)
     with col_f3:
         reason_val = st.text_input("Reason", value=default_reason)
     with col_f4:
-        type_val = st.selectbox("Type", ["Sent", "Received"], index=0 if default_type == "Sent" else 1)
+        # Informational display based on amount sign
+        auto_type = "Sent" if amount_val >= 0 else "Received"
+        st.write(f"**Type:** {auto_type} (auto)")
 
     uploaded_file = st.file_uploader("Screenshot / Receipt (Optional)", type=["png", "jpg", "jpeg"])
 
@@ -153,11 +156,12 @@ with st.form("transaction_form", clear_on_submit=True):
             except Exception as img_err:
                 st.warning(f"Failed to upload image: {img_err}")
 
+        final_type = "Sent" if amount_val >= 0 else "Received"
         payload = {
             "date": str(date_val),
             "amount": amount_val,
             "reason": reason_val,
-            "type": type_val,
+            "type": final_type,
             "screenshot": image_url
         }
 
@@ -171,67 +175,64 @@ with st.form("transaction_form", clear_on_submit=True):
         
         st.rerun()
 
+if edit_id:
+    if st.button("Cancel Edit", use_container_width=True):
+        st.session_state["edit_id"] = None
+        st.rerun()
+
+st.markdown("---")
+
+# --- SPREADSHEET TABLE WITH EDIT/DELETE/RECEIPT COLUMNS ---
+st.write("### Transactions Spreadsheet")
+
 if data:
     df_table = pd.DataFrame(data)
-    df_table['dt'] = pd.to_datetime(df_table['date'])
-    df_table['year_month'] = df_table['dt'].dt.to_period('M').astype(str)
-
-    unique_months = df_table['year_month'].unique()
-    month_bg_map = {}
-    colors = ["#fdf6e2", "#e6f2ff", "#f3e8ff", "#e8f8f5"]
     
-    for idx, m in enumerate(unique_months):
-        month_bg_map[m] = colors[idx % len(colors)]
+    # Only 2 alternating colors: light blue (#e6f2ff) and pinkish/purple (#f3e8ff)
+    bg_colors = ["#e6f2ff", "#f3e8ff"]
 
-    st.write("### Transactions Spreadsheet")
-    
-    table_html = """<div style="overflow-x: auto;">
-<table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; color: #000;">
-    <thead>
-        <tr style="background-color: #262730; color: white; text-align: left;">
-            <th style="padding: 10px; border: 1px solid #d3d3d3;">Date</th>
-            <th style="padding: 10px; border: 1px solid #d3d3d3;">Amount</th>
-            <th style="padding: 10px; border: 1px solid #d3d3d3;">Reason</th>
-            <th style="padding: 10px; border: 1px solid #d3d3d3;">Type</th>
-        </tr>
-    </thead>
-    <tbody>"""
+    # Table Header
+    th_cols = st.columns([2, 2, 3, 1.5, 1.5, 1, 1], vertical_alignment="center")
+    th_cols[0].markdown("**Date**")
+    th_cols[1].markdown("**Amount**")
+    th_cols[2].markdown("**Reason**")
+    th_cols[3].markdown("**Type**")
+    th_cols[4].markdown("**Receipt**")
+    th_cols[5].markdown("**Edit**")
+    th_cols[6].markdown("**Delete**")
 
-    for _, row in df_table.iterrows():
-        t_type = row.get("type", "Sent")
-        badge_bg = "#2e7d32" if t_type == "Sent" else "#c62828"
-        row_bg = month_bg_map.get(row['year_month'], "#ffffff")
+    st.markdown("<hr style='margin: 5px 0 10px 0;'>", unsafe_allow_html=True)
+
+    for idx, row in df_table.iterrows():
         amount_val = float(row['amount'])
-        reason_val = row['reason'] or '-'
+        t_type = "Sent" if amount_val >= 0 else "Received"
+        badge_bg = "#2e7d32" if t_type == "Sent" else "#c62828"
         
-        table_html += f"""<tr style="background-color: {row_bg};">
-    <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">{row['date']}</td>
-    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; font-weight: bold;">₹{amount_val:.2f}</td>
-    <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">{reason_val}</td>
-    <td style="padding: 9px 10px; border: 1px solid #d3d3d3;">
-        <span style="background-color: {badge_bg}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 11px;">{t_type}</span>
-    </td>
-</tr>"""
+        # Alternate between the 2 colors only
+        row_bg = bg_colors[idx % len(bg_colors)]
 
-    table_html += """</tbody>
-</table>
-</div>"""
-    
-    st.markdown(table_html, unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.write("#### Manage Transactions (Edit / Delete)")
+        # Row container styling for spreadsheet look
+        row_cols = st.columns([2, 2, 3, 1.5, 1.5, 1, 1], vertical_alignment="center")
 
-    for _, row in df_table.iterrows():
-        cols = st.columns([3, 1, 1])
-        with cols[0]:
-            st.write(f"📅 {row['date']} | **₹{float(row['amount']):.2f}** | {row['reason'] or '-'}")
-        with cols[1]:
-            if st.button("✏️ Edit", key=f"edit_{row['id']}", use_container_width=True):
+        with row_cols[0]:
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'>{row['date']}</div>", unsafe_allow_html=True)
+        with row_cols[1]:
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><b>₹{amount_val:.2f}</b></div>", unsafe_allow_html=True)
+        with row_cols[2]:
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'>{row['reason'] or '-'}</div>", unsafe_allow_html=True)
+        with row_cols[3]:
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><span style='background-color: {badge_bg}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold;'>{t_type}</span></div>", unsafe_allow_html=True)
+        with row_cols[4]:
+            if row.get("screenshot"):
+                st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><a href='{row['screenshot']}' target='_blank'>View</a></div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'>-</div>", unsafe_allow_html=True)
+        with row_cols[5]:
+            if st.button("✏️", key=f"edit_{row['id']}"):
                 st.session_state["edit_id"] = row["id"]
                 st.rerun()
-        with cols[2]:
-            if st.button("🗑️ Delete", key=f"del_{row['id']}", use_container_width=True):
+        with row_cols[6]:
+            if st.button("🗑️", key=f"del_btn_{row['id']}"):
                 st.session_state[f"confirm_del_{row['id']}"] = True
                 st.rerun()
 
