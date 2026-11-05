@@ -6,8 +6,8 @@ import pandas as pd
 st.set_page_config(page_title="Transactions", page_icon="💰", layout="centered")
 
 # Supabase Credentials initialization
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
-SUPABASE_KEY = st.secrets.get("SUPABASE_ANON_KEY", "")
+SUPABASE_URL = st.secrets.get("https://ozstskgokzppbfbbubyp.supabase.co/rest/v1/", "")
+SUPABASE_KEY = st.secrets.get("sb_publishable_JDP0BufPA7MpgLSi8wffMg_i7_64gVO", "")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     st.error("Please configure your Supabase URL and API Key in the Streamlit Secrets settings.")
