@@ -49,8 +49,10 @@ total_takes = sum([abs(float(t["amount"])) for t in data if t.get("type") == "Re
 total = total_takes - total_gives
 
 # --- TOTAL BALANCE & SUMMARY (Centered Alignment) ---
-st.markdown("<div style='text-align: center; width: 100%; margin-bottom: 20px;'>", unsafe_allow_html=True)
-st.subheader("Total Balance")
+st.markdown(
+    "<h3 style='text-align: center; margin-bottom: 20px;'>Total Balance</h3>", 
+    unsafe_allow_html=True
+)
 if total >= 0:
     st.markdown(f"<h1 style='color: #2e7d32; margin-top: -5px; text-align: center;'>₹{total:.2f}</h1>", unsafe_allow_html=True)
 else:
