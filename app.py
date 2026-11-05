@@ -10,7 +10,7 @@ SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_ANON_KEY", "")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("Kripya Streamlit Secrets me Supabase URL aur API Key configure karein.")
+    st.error("Please configure your Supabase URL and API Key in the Streamlit Secrets settings.")
 else:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -22,7 +22,7 @@ else:
         data = response.data
     except Exception as e:
         data = []
-        st.error(f"Data fetch karne me error aayi: {e}")
+        st.error(f"Error fetching data: {e}")
 
     # Calculate Total Balance
     total = sum([float(t["amount"]) for t in data]) if data else 0
@@ -52,12 +52,12 @@ else:
                         "reason": reason,
                         "screenshot": ""
                     }).execute()
-                    st.success("Transaction successfully add ho gayi!")
+                    st.success("Transaction added successfully!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Insert karne me error aayi: {e}")
+                    st.error(f"Error inserting transaction: {e}")
             else:
-                st.error("Kripya Reason zaroor bharein.")
+                st.error("Please enter a reason.")
 
     st.markdown("---")
     st.write("### Transaction History")
@@ -67,4 +67,4 @@ else:
         # Display table with clean formatting
         st.dataframe(df[["date", "amount", "reason"]], use_container_width=True)
     else:
-        st.info("Abhi tak koi transaction nahi hai.")
+        st.info("No transactions found yet.")
