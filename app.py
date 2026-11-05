@@ -19,6 +19,13 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.title("📊 Transactions Tracker")
 
+# Handle query params for edit/delete actions from HTML table links
+query_params = st.query_params
+if "edit_id" in query_params:
+    st.session_state["edit_id"] = query_params["edit_id"]
+if "del_id" in query_params:
+    st.session_state["confirm_del_id"] = query_params["del_id"]
+
 # Fetch data from Supabase
 def fetch_data():
     try:
@@ -26,7 +33,6 @@ def fetch_data():
         rows = response.data or []
         for r in rows:
             amt = float(r.get("amount", 0))
-            # Positive amount = Sent, Negative amount = Received
             r["type"] = "Sent" if amt >= 0 else "Received"
         return rows
     except Exception as e:
@@ -35,7 +41,7 @@ def fetch_data():
 
 data = fetch_data()
 
-# Calculate Totals strictly based on updated 'type'
+# Calculate Totals
 total_takes = sum([float(t["amount"]) for t in data if t.get("type") == "Received"]) if data else 0
 total_gives = sum([float(t["amount"]) for t in data if t.get("type") == "Sent"]) if data else 0
 total = total_takes - total_gives
@@ -100,18 +106,21 @@ if data:
         
         monthly_summary = pd.DataFrame(monthly_summary).sort_values('month_num')
 
-        cards_html = "<div style='display: flex; overflow-x: auto; gap: 10px; padding: 5px 0;'>"
-        for _, m_row in monthly_summary.iterrows():
-            m_amt = float(m_row['amount'])
-            color = "#2e7d32" if m_amt >= 0 else "#c62828"
-            cards_html += f"""
-            <div style='min-width: 130px; background: #ffffff; padding: 10px; border-radius: 6px; border: 1px solid #ddd; text-align: center; color: #000;'>
-                <p style='margin:0; font-size:12px; color:#555;'>{m_row['month_name']}</p>
-                <p style='font-size:15px; font-weight:bold; color:{color}; margin:5px 0 0 0;'>₹{m_amt:.2f}</p>
-            </div>
-            """
-        cards_html += "</div>"
-        st.markdown(cards_html, unsafe_allow_html=True)
+        if not monthly_summary.empty:
+            m_cols = st.columns(len(monthly_summary))
+            for i, (_, m_row) in enumerate(monthly_summary.iterrows()):
+                m_amt = float(m_row['amount'])
+                color = "#2e7d32" if m_amt >= 0 else "#c62828"
+                with m_cols[i]:
+                    st.markdown(
+                        f"""
+                        <div style='background: #ffffff; padding: 10px; border-radius: 6px; border: 1px solid #ddd; text-align: center; color: #000;'>
+                            <p style='margin:0; font-size:12px; color:#555;'>{m_row['month_name']}</p>
+                            <p style='font-size:15px; font-weight:bold; color:{color}; margin:5px 0 0 0;'>₹{m_amt:.2f}</p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
 st.markdown("---")
 
@@ -124,7 +133,6 @@ edit_item = next((t for t in data if t["id"] == edit_id), None) if edit_id else 
 default_date = datetime.strptime(edit_item["date"], "%Y-%m-%d").date() if edit_item else datetime.today()
 default_amount = float(edit_item["amount"]) if edit_item else 0.0
 default_reason = edit_item["reason"] if edit_item else ""
-default_type = edit_item.get("type", "Sent") if edit_item else "Sent"
 
 with st.form("transaction_form", clear_on_submit=True):
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
@@ -168,6 +176,7 @@ with st.form("transaction_form", clear_on_submit=True):
             supabase.table("transactions").update(payload).eq("id", edit_id).execute()
             st.success("Transaction updated successfully!")
             st.session_state["edit_id"] = None
+            st.query_params.clear()
         else:
             supabase.table("transactions").insert(payload).execute()
             st.success("Transaction added successfully!")
@@ -177,30 +186,32 @@ with st.form("transaction_form", clear_on_submit=True):
 if edit_id:
     if st.button("Cancel Edit", use_container_width=True):
         st.session_state["edit_id"] = None
+        st.query_params.clear()
         st.rerun()
 
 st.markdown("---")
 
-# --- SPREADSHEET TABLE WITH EDIT/DELETE/RECEIPT COLUMNS ---
+# --- HORIZONTAL SCROLLABLE SPREADSHEET TABLE ---
 st.write("### Transactions Spreadsheet")
 
 if data:
     df_table = pd.DataFrame(data)
-    
-    # Only 2 alternating colors: light blue and pinkish/purple
-    bg_colors = ["#e6f2ff", "#f3e8ff"]
+    bg_colors = ["#e6f2ff", "#f3e8ff"] # Only 2 alternating colors: light blue & pinkish/purple
 
-    # Table Header
-    th_cols = st.columns([2, 2, 3, 1.5, 1.5, 1, 1], vertical_alignment="center")
-    th_cols[0].markdown("**Date**")
-    th_cols[1].markdown("**Amount**")
-    th_cols[2].markdown("**Reason**")
-    th_cols[3].markdown("**Type**")
-    th_cols[4].markdown("**Receipt**")
-    th_cols[5].markdown("**Edit**")
-    th_cols[6].markdown("**Delete**")
-
-    st.markdown("<hr style='margin: 5px 0 10px 0;'>", unsafe_allow_html=True)
+    table_html = """<div style="overflow-x: auto; width: 100%;">
+<table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; color: #000; min-width: 600px;">
+    <thead>
+        <tr style="background-color: #262730; color: white; text-align: left;">
+            <th style="padding: 10px; border: 1px solid #d3d3d3;">Date</th>
+            <th style="padding: 10px; border: 1px solid #d3d3d3;">Amount</th>
+            <th style="padding: 10px; border: 1px solid #d3d3d3;">Reason</th>
+            <th style="padding: 10px; border: 1px solid #d3d3d3;">Type</th>
+            <th style="padding: 10px; border: 1px solid #d3d3d3; text-align: center;">Receipt</th>
+            <th style="padding: 10px; border: 1px solid #d3d3d3; text-align: center;">Edit</th>
+            <th style="padding: 10px; border: 1px solid #d3d3d3; text-align: center;">Delete</th>
+        </tr>
+    </thead>
+    <tbody>"""
 
     for idx, row in df_table.iterrows():
         amount_val = float(row['amount'])
@@ -209,43 +220,40 @@ if data:
         
         # Negative amount = Green text, Positive amount = Red text
         amount_color = "#2e7d32" if amount_val < 0 else "#c62828"
-        
-        # Alternate between 2 background colors
         row_bg = bg_colors[idx % len(bg_colors)]
+        
+        receipt_link = f"<a href='{row['screenshot']}' target='_blank'>View</a>" if row.get("screenshot") else "-"
+        
+        table_html += f"""<tr style="background-color: {row_bg};">
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; color: #000;">{row['date']}</td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3;"><b style="color: {amount_color};">₹{amount_val:.2f}</b></td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; color: #000;">{row['reason'] or '-'}</td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3;"><span style="background-color: {badge_bg}; color: white; padding: 3px 10px; border-radius: 10px; font-weight: bold; font-size: 11px;">{t_type}</span></td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;">{receipt_link}</td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;"><a href="?edit_id={row['id']}" target="_self" style="text-decoration: none;">✏️</a></td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;"><a href="?del_id={row['id']}" target="_self" style="text-decoration: none;">🗑️</a></td>
+</tr>"""
 
-        row_cols = st.columns([2, 2, 3, 1.5, 1.5, 1, 1], vertical_alignment="center")
+    table_html += """</tbody>
+</table>
+</div>"""
 
-        with row_cols[0]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px; color: #000;'>{row['date']}</div>", unsafe_allow_html=True)
-        with row_cols[1]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><b style='color: {amount_color};'>₹{amount_val:.2f}</b></div>", unsafe_allow_html=True)
-        with row_cols[2]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px; color: #000;'>{row['reason'] or '-'}</div>", unsafe_allow_html=True)
-        with row_cols[3]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><span style='background-color: {badge_bg}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold;'>{t_type}</span></div>", unsafe_allow_html=True)
-        with row_cols[4]:
-            if row.get("screenshot"):
-                st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px;'><a href='{row['screenshot']}' target='_blank'>View</a></div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div style='background-color: {row_bg}; padding: 6px; border-radius: 4px; color: #000;'>-</div>", unsafe_allow_html=True)
-        with row_cols[5]:
-            if st.button("✏️", key=f"edit_{row['id']}"):
-                st.session_state["edit_id"] = row["id"]
-                st.rerun()
-        with row_cols[6]:
-            if st.button("🗑️", key=f"del_btn_{row['id']}"):
-                st.session_state[f"confirm_del_{row['id']}"] = True
-                st.rerun()
+    st.markdown(table_html, unsafe_allow_html=True)
 
-        if st.session_state.get(f"confirm_del_{row['id']}", False):
-            st.warning(f"Delete transaction for '{row.get('reason', '')}'?")
-            d1, d2 = st.columns(2)
-            if d1.button("Yes, Delete", key=f"yes_del_{row['id']}"):
-                supabase.table("transactions").delete().eq("id", row["id"]).execute()
-                st.session_state[f"confirm_del_{row['id']}"] = False
-                st.rerun()
-            if d2.button("Cancel", key=f"cancel_del_{row['id']}"):
-                st.session_state[f"confirm_del_{row['id']}"] = False
-                st.rerun()
+    # Handle delete confirmation modal/warning
+    del_id = st.session_state.get("confirm_del_id", None)
+    if del_id:
+        st.warning(f"Kya aap is transaction ko delete karna chahte hain?")
+        d1, d2 = st.columns(2)
+        if d1.button("Yes, Delete", key="yes_del_action"):
+            supabase.table("transactions").delete().eq("id", del_id).execute()
+            st.session_state["confirm_del_id"] = None
+            st.query_params.clear()
+            st.success("Transaction deleted successfully!")
+            st.rerun()
+        if d2.button("Cancel", key="cancel_del_action"):
+            st.session_state["confirm_del_id"] = None
+            st.query_params.clear()
+            st.rerun()
 else:
     st.info("No transactions found yet.")
