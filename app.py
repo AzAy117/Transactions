@@ -41,18 +41,20 @@ def fetch_data():
 
 data = fetch_data()
 
-# Calculate Totals
-total_takes = sum([float(t["amount"]) for t in data if t.get("type") == "Received"]) if data else 0
-total_gives = sum([float(t["amount"]) for t in data if t.get("type") == "Sent"]) if data else 0
+# Calculate Totals (Sent = Gives, Received = Takes)
+total_gives = sum([abs(float(t["amount"])) for t in data if t.get("type") == "Sent"]) if data else 0
+total_takes = sum([abs(float(t["amount"])) for t in data if t.get("type") == "Received"]) if data else 0
+
+# Correct Balance Calculation: Received (Takes) - Sent (Gives)
 total = total_takes - total_gives
 
-# --- TOTAL BALANCE & SUMMARY ---
-st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
+# --- TOTAL BALANCE & SUMMARY (Centered Alignment) ---
+st.markdown("<div style='text-align: center; width: 100%; margin-bottom: 20px;'>", unsafe_allow_html=True)
 st.subheader("Total Balance")
 if total >= 0:
-    st.markdown(f"<h1 style='color: #2e7d32; margin-top: -10px;'>₹{total:.2f}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1 style='color: #2e7d32; margin-top: -5px; text-align: center;'>₹{total:.2f}</h1>", unsafe_allow_html=True)
 else:
-    st.markdown(f"<h1 style='color: #c62828; margin-top: -10px;'>-₹{abs(total):.2f}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1 style='color: #c62828; margin-top: -5px; text-align: center;'>-₹{abs(total):.2f}</h1>", unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
 col_t1, col_t2 = st.columns(2)
@@ -95,8 +97,8 @@ if data:
         y_data = df_sum[df_sum['year'] == sel_year]
         
         def calc_net(group):
-            received = group[group['type'] == 'Received']['amount'].sum()
-            sent = group[group['type'] == 'Sent']['amount'].sum()
+            received = group[group['type'] == 'Received']['amount'].apply(lambda x: abs(float(x))).sum()
+            sent = group[group['type'] == 'Sent']['amount'].apply(lambda x: abs(float(x))).sum()
             return received - sent
 
         monthly_summary = []
@@ -196,7 +198,7 @@ st.write("### Transactions Spreadsheet")
 
 if data:
     df_table = pd.DataFrame(data)
-    bg_colors = ["#e6f2ff", "#f3e8ff"] # Only 2 alternating colors: light blue & pinkish/purple
+    bg_colors = ["#e6f2ff", "#f3e8ff"] # 2 alternating colors: light blue & pinkish/purple
 
     table_html = """<div style="overflow-x: auto; width: 100%;">
 <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; color: #000; min-width: 600px;">
