@@ -5,14 +5,14 @@ from datetime import datetime
 import io
 
 # Page configuration
-st.set_page_config(page_title="Transactions", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Transactions Tracker", page_icon="📊", layout="wide")
 
-# Supabase Credentials initialization
+# Supabase Credentials initialization from st.secrets
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://ozstskgokzppbfbbubyp.supabase.co")
 SUPABASE_KEY = st.secrets.get("SUPABASE_ANON_KEY", "sb_publishable_JDP0BufPA7MpgLSi8wffMg_i7_64gVO")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("Please configure your Supabase URL and API Key in the Streamlit Secrets settings.")
+    st.error("Please configure your SUPABASE_URL and SUPABASE_ANON_KEY in Streamlit Secrets.")
     st.stop()
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -24,7 +24,6 @@ def fetch_data():
     try:
         response = supabase.table("transactions").select("*").order("date", desc=False).execute()
         rows = response.data or []
-        # Ensure 'type' field exists in all rows to prevent KeyError
         for r in rows:
             if "type" not in r or not r["type"]:
                 r["type"] = "Sent"
@@ -35,10 +34,10 @@ def fetch_data():
 
 data = fetch_data()
 
-# Calculate Totals
-total = sum([float(t["amount"]) for t in data]) if data else 0
-total_takes = sum([float(t["amount"]) for t in data if t.get("type") == "Received" or float(t["amount"]) > 0]) if data else 0
-total_gives = sum([float(t["amount"]) for t in data if t.get("type") == "Sent" or float(t["amount"]) < 0]) if data else 0
+# Calculate Totals strictly based on 'type'
+total_takes = sum([float(t["amount"]) for t in data if t.get("type") == "Received"]) if data else 0
+total_gives = sum([float(t["amount"]) for t in data if t.get("type") == "Sent"]) if data else 0
+total = total_takes - total_gives
 
 # --- TOTAL BALANCE & SUMMARY ---
 st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
@@ -53,9 +52,9 @@ col_t1, col_t2 = st.columns(2)
 with col_t1:
     st.markdown(
         f"""
-        <div style='background-color: #ffebee; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #ffcdd2;'>
-            <p style='margin: 0; color: #c62828; font-weight: bold; font-size: 13px;'>Total Gives</p>
-            <p style='margin: 3px 0 0 0; color: #c62828; font-size: 18px; font-weight: bold;'>₹{abs(total_gives):.2f}</p>
+        <div style='background-color: #ffebee; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #ffcdd2;'>
+            <p style='margin: 0; color: #c62828; font-weight: bold; font-size: 13px;'>Total Gives (Sent)</p>
+            <p style='margin: 3px 0 0 0; color: #c62828; font-size: 18px; font-weight: bold;'>₹{total_gives:.2f}</p>
         </div>
         """,
         unsafe_allow_html=True
@@ -63,8 +62,8 @@ with col_t1:
 with col_t2:
     st.markdown(
         f"""
-        <div style='background-color: #e8f5e9; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #c8e6c9;'>
-            <p style='margin: 0; color: #2e7d32; font-weight: bold; font-size: 13px;'>Total Takes</p>
+        <div style='background-color: #e8f5e9; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #c8e6c9;'>
+            <p style='margin: 0; color: #2e7d32; font-weight: bold; font-size: 13px;'>Total Takes (Received)</p>
             <p style='margin: 3px 0 0 0; color: #2e7d32; font-size: 18px; font-weight: bold;'>₹{total_takes:.2f}</p>
         </div>
         """,
@@ -77,22 +76,29 @@ st.markdown("---")
 st.write("### 📅 Monthly Summary")
 if data:
     df_sum = pd.DataFrame(data)
-    df_sum['dt'] = pd.to_datetime(df_sum['date'])
+    df_sum['dt'] = pd.to_datetime(df_sum['dt'].fillna(df_sum['date']))
     df_sum['year'] = df_sum['dt'].dt.year
     df_sum['month_name'] = df_sum['dt'].dt.strftime('%B %Y')
-    df_sum['month_num'] = df_sum['dt'].dt.to_period('M')
+    df_sum['month_num'] = df_sum['dt'].dt.to_period('M').astype(str)
 
     years = sorted(df_sum['year'].unique(), reverse=True)
     sel_year = st.selectbox("Select Year", years, label_visibility="collapsed")
 
     if sel_year:
         y_data = df_sum[df_sum['year'] == sel_year]
-        monthly_summary = (
-            y_data.groupby(['month_num', 'month_name'])['amount']
-            .sum()
-            .reset_index()
-            .sort_values('month_num')
-        )
+        
+        # Calculate net monthly amount (Received - Sent)
+        def calc_net(group):
+            received = group[group['type'] == 'Received']['amount'].sum()
+            sent = group[group['type'] == 'Sent']['amount'].sum()
+            return received - sent
+
+        monthly_summary = []
+        for (m_num, m_name), group in y_data.groupby(['month_num', 'month_name']):
+            net_amt = calc_net(group)
+            monthly_summary.append({'month_num': m_num, 'month_name': m_name, 'amount': net_amt})
+        
+        monthly_summary = pd.DataFrame(monthly_summary).sort_values('month_num')
 
         cards_html = "<div style='display: flex; overflow-x: auto; gap: 10px; padding: 5px 0;'>"
         for _, m_row in monthly_summary.iterrows():
@@ -125,7 +131,7 @@ with st.form("transaction_form", clear_on_submit=True):
     with col_f1:
         date_val = st.date_input("Date", value=default_date)
     with col_f2:
-        amount_val = st.number_input("Amount", value=default_amount, step=0.01)
+        amount_val = st.number_input("Amount", value=default_amount, step=0.01, min_value=0.0)
     with col_f3:
         reason_val = st.text_input("Reason", value=default_reason)
     with col_f4:
@@ -137,12 +143,12 @@ with st.form("transaction_form", clear_on_submit=True):
     submitted = st.form_submit_button(btn_label, use_container_width=True)
 
     if submitted:
-        image_url = edit_item["screenshot"] if edit_item else ""
+        image_url = edit_item.get("screenshot", "") if edit_item else ""
         
         if uploaded_file is not None:
             try:
                 file_ext = uploaded_file.name.split(".")[-1]
-                file_path = f"{datetime.now().timestamp()}.{file_ext}"
+                file_path = f"{int(datetime.now().timestamp())}.{file_ext}"
                 supabase.storage.from_("screenshots").upload(file_path, uploaded_file.getvalue())
                 image_url = supabase.storage.from_("screenshots").get_public_url(file_path)
             except Exception as img_err:
@@ -173,10 +179,10 @@ if edit_id:
 
 st.markdown("---")
 
-# --- SPREADSHEET TABLE VIEW ---
+# --- SPREADSHEET TABLE VIEW & EXPORT ---
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
-    st.write("### Transactions")
+    st.write("### Transactions History")
 with col_h2:
     if data:
         df_export = pd.DataFrame(data)
@@ -199,12 +205,7 @@ with col_h2:
 if data:
     df_table = pd.DataFrame(data)
     df_table['dt'] = pd.to_datetime(df_table['date'])
-    df_table['year_month'] = df_table['dt'].dt.to_period('M')
-
-    unique_months = df_table['year_month'].unique()
-    month_bg_map = {}
-    for idx, m in enumerate(unique_months):
-        month_bg_map[m] = "#fffaf0" if idx % 2 == 0 else "#e6f2ff"
+    df_table['year_month'] = df_table['dt'].dt.to_period('M').astype(str)
 
     # Table Headers
     h_col1, h_col2, h_col3, h_col4, h_col5, h_col6 = st.columns([2, 2, 3, 2, 1.5, 2])
@@ -218,16 +219,9 @@ if data:
     st.markdown("<hr style='margin: 5px 0 10px 0;'>", unsafe_allow_html=True)
 
     for _, row in df_table.iterrows():
-        bg_color = month_bg_map.get(row['year_month'], "#ffffff")
         t_type = row.get("type", "Sent")
-        type_bg = "#2e7d32" if t_type == "Sent" else "#c62828"
-
-        st.markdown(
-            f"""
-            <div style="background-color: {bg_color}; padding: 6px 10px; border-radius: 4px; margin-bottom: 4px; border: 1px solid #d3d3d3; color: #000;">
-            """,
-            unsafe_allow_html=True
-        )
+        # Sent = Red (Gives), Received = Green (Takes)
+        type_bg = "#c62828" if t_type == "Sent" else "#2e7d32"
 
         c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 2, 1.5, 2])
 
@@ -236,7 +230,7 @@ if data:
         c3.write(row["reason"] or "-")
         c4.markdown(f"<span style='background-color: {type_bg}; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 12px;'>{t_type}</span>", unsafe_allow_html=True)
 
-        if row["screenshot"]:
+        if row.get("screenshot"):
             c5.markdown(f"[View]({row['screenshot']})")
         else:
             c5.write("-")
@@ -250,10 +244,8 @@ if data:
                 st.session_state[f"confirm_del_{row['id']}"] = True
                 st.rerun()
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
         if st.session_state.get(f"confirm_del_{row['id']}", False):
-            st.warning(f"Delete transaction for '{row['reason']}'?")
+            st.warning(f"Delete transaction for '{row.get('reason', '')}'?")
             d1, d2 = st.columns(2)
             if d1.button("Yes, Delete", key=f"yes_del_{row['id']}"):
                 supabase.table("transactions").delete().eq("id", row["id"]).execute()
@@ -262,5 +254,7 @@ if data:
             if d2.button("Cancel", key=f"cancel_del_{row['id']}"):
                 st.session_state[f"confirm_del_{row['id']}"] = False
                 st.rerun()
+        
+        st.markdown("<hr style='margin: 5px 0; border: 0.5px solid #eee;'>", unsafe_allow_html=True)
 else:
     st.info("No transactions found yet.")
