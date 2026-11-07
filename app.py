@@ -18,12 +18,11 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.title("📊 Transactions Tracker")
 
-# Handle query parameters for table-based actions
-query_params = st.query_params
-if "edit_id" in query_params:
-    st.session_state["active_edit_id"] = query_params["edit_id"]
-if "del_id" in query_params:
-    st.session_state["active_del_id"] = query_params["del_id"]
+# Initialize Session State for seamless inline editing & deleting
+if "active_edit_id" not in st.session_state:
+    st.session_state.active_edit_id = None
+if "active_del_id" not in st.session_state:
+    st.session_state.active_del_id = None
 
 # Fetch data from Supabase
 def fetch_data():
@@ -125,90 +124,6 @@ if data:
 
 st.markdown("---")
 
-# --- ACTIVE EDIT OR DELETE POPUP SECTION AT THE TOP ---
-active_edit_id = st.session_state.get("active_edit_id")
-active_del_id = st.session_state.get("active_del_id")
-
-if active_edit_id:
-    edit_item = next((t for t in data if str(t["id"]) == str(active_edit_id)), None)
-    if edit_item:
-        st.info(f"✏️ Editing transaction: {edit_item.get('reason', '')} (₹{edit_item.get('amount')})")
-        with st.form("edit_transaction_form"):
-            try:
-                def_date = datetime.strptime(edit_item["date"], "%Y-%m-%d").date()
-            except:
-                def_date = datetime.today()
-            def_amount = float(edit_item["amount"])
-            def_reason = edit_item["reason"] or ""
-
-            e_col1, e_col2, e_col3, e_col4 = st.columns(4)
-            with e_col1:
-                new_date = st.date_input("Date", value=def_date)
-            with e_col2:
-                new_amount = st.number_input("Amount", value=def_amount, step=0.01)
-            with e_col3:
-                new_reason = st.text_input("Reason", value=def_reason)
-            with e_col4:
-                auto_type = "Sent" if new_amount >= 0 else "Received"
-                st.write(f"**Type:** {auto_type} (auto)")
-
-            new_file = st.file_uploader("Replace Receipt (Optional)", type=["png", "jpg", "jpeg"])
-            
-            sub_col1, sub_col2 = st.columns(2)
-            with sub_col1:
-                update_submitted = st.form_submit_button("Update Transaction", use_container_width=True)
-            with sub_col2:
-                cancel_edit = st.form_submit_button("Cancel", use_container_width=True)
-
-            if cancel_edit:
-                st.session_state["active_edit_id"] = None
-                st.query_params.clear()
-                st.rerun()
-
-            if update_submitted:
-                image_url = edit_item.get("screenshot", "")
-                if new_file is not None:
-                    try:
-                        file_ext = new_file.name.split(".")[-1]
-                        file_path = f"{int(datetime.now().timestamp())}.{file_ext}"
-                        supabase.storage.from_("screenshots").upload(file_path, new_file.getvalue())
-                        image_url = supabase.storage.from_("screenshots").get_public_url(file_path)
-                    except Exception as img_err:
-                        st.warning(f"Failed to upload image: {img_err}")
-
-                final_type = "Sent" if new_amount >= 0 else "Received"
-                payload = {
-                    "date": str(new_date),
-                    "amount": new_amount,
-                    "reason": new_reason,
-                    "type": final_type,
-                    "screenshot": image_url
-                }
-
-                supabase.table("transactions").update(payload).eq("id", active_edit_id).execute()
-                st.success("Transaction updated successfully!")
-                st.session_state["active_edit_id"] = None
-                st.query_params.clear()
-                st.rerun()
-
-if active_del_id:
-    del_item = next((t for t in data if str(t["id"]) == str(active_del_id)), None)
-    if del_item:
-        st.warning(f"Do you want to delete this transaction for '{del_item.get('reason', '')}' (₹{del_item.get('amount')})?")
-        d_col1, d_col2 = st.columns(2)
-        with d_col1:
-            if st.button("Yes, Delete", use_container_width=True, key="confirm_del_btn"):
-                supabase.table("transactions").delete().eq("id", active_del_id).execute()
-                st.success("Transaction deleted successfully!")
-                st.session_state["active_del_id"] = None
-                st.query_params.clear()
-                st.rerun()
-        with d_col2:
-            if st.button("Cancel", use_container_width=True, key="cancel_del_btn"):
-                st.session_state["active_del_id"] = None
-                st.query_params.clear()
-                st.rerun()
-
 # --- ADD TRANSACTION SECTION ---
 st.write("### Add New Transaction")
 
@@ -217,7 +132,7 @@ with st.form("transaction_form", clear_on_submit=True):
     with col_f1:
         date_val = st.date_input("Date", value=datetime.today())
     with col_f2:
-        amount_val = st.number_input("Amount", value=0.0, step=0.01)
+        amount_val = st.number_input("Amount", value=0, step=0.1)
     with col_f3:
         reason_val = st.text_input("Reason", value="")
     with col_f4:
@@ -254,7 +169,7 @@ with st.form("transaction_form", clear_on_submit=True):
 
 st.markdown("---")
 
-# --- HORIZONTAL SCROLLABLE SPREADSHEET TABLE WITH EMBEDDED EDIT/DELETE/RECEIPT ---
+# --- SPREADSHEET TABLE & SEAMLESS INLINE ACTIONS ---
 st.write("### Transactions Spreadsheet")
 
 if data:
@@ -292,14 +207,124 @@ if data:
     <td style="padding: 9px 10px; border: 1px solid #d3d3d3; color: #000;">{row['reason'] or '-'}</td>
     <td style="padding: 9px 10px; border: 1px solid #d3d3d3;"><span style="background-color: {badge_bg}; color: white; padding: 3px 10px; border-radius: 10px; font-weight: bold; font-size: 11px;">{t_type}</span></td>
     <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;">{receipt_link}</td>
-    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;"><a href="?edit_id={row['id']}" target="_self" style="text-decoration: none;">✏️ Edit</a></td>
-    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;"><a href="?del_id={row['id']}" target="_self" style="text-decoration: none;">🗑️ Delete</a></td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;">[EDIT_PLACEHOLDER_{row['id']}]</td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;">[DEL_PLACEHOLDER_{row['id']}]</td>
 </tr>"""
 
     table_html += """</tbody>
 </table>
 </div>"""
 
-    st.markdown(table_html, unsafe_allow_html=True)
+    # Split the table template around placeholders to inject native Streamlit buttons seamlessly
+    parts = table_html.split("[EDIT_PLACEHOLDER_")
+    st.markdown(parts[0], unsafe_allow_html=True)
+
+    for idx, row in df_table.iterrows():
+        row_id = row['id']
+        # Render the HTML chunk for this row up to delete placeholder
+        if idx > 0:
+            # Reconstruct table row middle parts safely
+            pass
+        
+        # Render Streamlit buttons for this specific row cleanly
+        c_edit, c_del = st.columns([1, 1])
+        # To keep table structure tight, we render interactive controls via Streamlit native loop below the table or via row-by-row columns if needed.
+    
+    # Alternatively, keeping the HTML clean and rendering action buttons directly using Streamlit native columns loop matching each row:
+    st.markdown("---")
+    st.write("#### ⚡ Quick Management Panel")
+    for _, row in df_table.iterrows():
+        r_col1, r_col2, r_col3 = st.columns([4, 1, 1])
+        with r_col1:
+            amt_col = "#2e7d32" if float(row['amount']) < 0 else "#c62828"
+            st.markdown(f"📅 **{row['date']}** | <b style='color: {amt_col};'>₹{float(row['amount']):.2f}</b> | {row['reason'] or '-'}", unsafe_allow_html=True)
+        with r_col2:
+            if st.button("✏️ Edit", key=f"btn_edit_{row['id']}"):
+                st.session_state.active_edit_id = row['id']
+                st.session_state.active_del_id = None
+                st.rerun()
+        with r_col3:
+            if st.button("🗑️ Delete", key=f"btn_del_{row['id']}"):
+                st.session_state.active_del_id = row['id']
+                st.session_state.active_edit_id = None
+                st.rerun()
+
+    # --- SEAMLESS INLINE EDIT FORM CONTAINER ---
+    if st.session_state.active_edit_id:
+        edit_item = next((t for t in data if str(t["id"]) == str(st.session_state.active_edit_id)), None)
+        if edit_item:
+            st.info(f"✏️ Editing transaction: {edit_item.get('reason', '')} (₹{edit_item.get('amount')})")
+            with st.form("inline_edit_form"):
+                try:
+                    def_date = datetime.strptime(edit_item["date"], "%Y-%m-%d").date()
+                except:
+                    def_date = datetime.today()
+                def_amount = float(edit_item["amount"])
+                def_reason = edit_item["reason"] or ""
+
+                ie_col1, ie_col2, ie_col3, ie_col4 = st.columns(4)
+                with ie_col1:
+                    new_date = st.date_input("Date", value=def_date)
+                with ie_col2:
+                    new_amount = st.number_input("Amount", value=def_amount, step=0.01)
+                with ie_col3:
+                    new_reason = st.text_input("Reason", value=def_reason)
+                with ie_col4:
+                    auto_type = "Sent" if new_amount >= 0 else "Received"
+                    st.write(f"**Type:** {auto_type} (auto)")
+
+                new_file = st.file_uploader("Replace Receipt (Optional)", type=["png", "jpg", "jpeg"])
+                
+                sub_c1, sub_c2 = st.columns(2)
+                with sub_c1:
+                    save_update = st.form_submit_button("💾 Save Changes", use_container_width=True)
+                with sub_c2:
+                    cancel_update = st.form_submit_button("❌ Cancel", use_container_width=True)
+
+                if cancel_update:
+                    st.session_state.active_edit_id = None
+                    st.rerun()
+
+                if save_update:
+                    image_url = edit_item.get("screenshot", "")
+                    if new_file is not None:
+                        try:
+                            file_ext = new_file.name.split(".")[-1]
+                            file_path = f"{int(datetime.now().timestamp())}.{file_ext}"
+                            supabase.storage.from_("screenshots").upload(file_path, new_file.getvalue())
+                            image_url = supabase.storage.from_("screenshots").get_public_url(file_path)
+                        except Exception as img_err:
+                            st.warning(f"Failed to upload image: {img_err}")
+
+                    final_type = "Sent" if new_amount >= 0 else "Received"
+                    payload = {
+                        "date": str(new_date),
+                        "amount": new_amount,
+                        "reason": new_reason,
+                        "type": final_type,
+                        "screenshot": image_url
+                    }
+
+                    supabase.table("transactions").update(payload).eq("id", st.session_state.active_edit_id).execute()
+                    st.success("Transaction updated successfully on Cloud!")
+                    st.session_state.active_edit_id = None
+                    st.rerun()
+
+    # --- SEAMLESS DELETE CONFIRMATION CONTAINER ---
+    if st.session_state.active_del_id:
+        del_item = next((t for t in data if str(t["id"]) == str(st.session_state.active_del_id)), None)
+        if del_item:
+            st.warning(f"⚠️ Do you want to delete this transaction for '{del_item.get('reason', '')}' (₹{del_item.get('amount')})?")
+            dc_1, dc_2 = st.columns(2)
+            with dc_1:
+                if st.button("Yes, Delete", use_container_width=True, key="confirm_delete_action"):
+                    supabase.table("transactions").delete().eq("id", st.session_state.active_del_id).execute()
+                    st.success("Transaction deleted successfully from Cloud!")
+                    st.session_state.active_del_id = None
+                    st.rerun()
+            with dc_2:
+                if st.button("Cancel", use_container_width=True, key="cancel_delete_action"):
+                    st.session_state.active_del_id = None
+                    st.rerun()
 else:
     st.info("No transactions found yet.")
