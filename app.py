@@ -2,7 +2,6 @@ import streamlit as st
 from supabase import create_client
 import pandas as pd
 from datetime import datetime
-import io
 
 # Page configuration
 st.set_page_config(page_title="Transactions Tracker", page_icon="📊", layout="wide")
@@ -18,13 +17,6 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.title("📊 Transactions Tracker")
-
-# Handle query params for edit/delete actions from HTML table links
-query_params = st.query_params
-if "edit_id" in query_params:
-    st.session_state["edit_id"] = query_params["edit_id"]
-if "del_id" in query_params:
-    st.session_state["confirm_del_id"] = query_params["del_id"]
 
 # Fetch data from Supabase
 def fetch_data():
@@ -49,10 +41,8 @@ total_takes = sum([abs(float(t["amount"])) for t in data if t.get("type") == "Re
 total = total_takes - total_gives
 
 # --- TOTAL BALANCE & SUMMARY (Centered Alignment) ---
-st.markdown(
-    "<h3 style='text-align: center; margin-bottom: 20px;'>Total Balance</h3>", 
-    unsafe_allow_html=True
-)
+st.markdown("<div style='text-align: center; width: 100%; margin-bottom: 20px;'>", unsafe_allow_html=True)
+st.subheader("Total Balance")
 if total >= 0:
     st.markdown(f"<h1 style='color: #2e7d32; margin-top: -5px; text-align: center;'>₹{total:.2f}</h1>", unsafe_allow_html=True)
 else:
@@ -128,36 +118,27 @@ if data:
 
 st.markdown("---")
 
-# --- ADD / EDIT TRANSACTION SECTION ---
-st.write("### Add / Edit Transaction")
-
-edit_id = st.session_state.get("edit_id", None)
-edit_item = next((t for t in data if t["id"] == edit_id), None) if edit_id else None
-
-default_date = datetime.strptime(edit_item["date"], "%Y-%m-%d").date() if edit_item else datetime.today()
-default_amount = float(edit_item["amount"]) if edit_item else 0.0
-default_reason = edit_item["reason"] if edit_item else ""
+# --- ADD TRANSACTION SECTION ---
+st.write("### Add New Transaction")
 
 with st.form("transaction_form", clear_on_submit=True):
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     with col_f1:
-        date_val = st.date_input("Date", value=default_date)
+        date_val = st.date_input("Date", value=datetime.today())
     with col_f2:
-        amount_val = st.number_input("Amount", value=default_amount, step=0.01)
+        amount_val = st.number_input("Amount", value=0.0, step=0.01)
     with col_f3:
-        reason_val = st.text_input("Reason", value=default_reason)
+        reason_val = st.text_input("Reason", value="")
     with col_f4:
         auto_type = "Sent" if amount_val >= 0 else "Received"
         st.write(f"**Type:** {auto_type} (auto)")
 
     uploaded_file = st.file_uploader("Screenshot / Receipt (Optional)", type=["png", "jpg", "jpeg"])
 
-    btn_label = "Update Transaction" if edit_item else "Add Transaction"
-    submitted = st.form_submit_button(btn_label, use_container_width=True)
+    submitted = st.form_submit_button("Add Transaction", use_container_width=True)
 
     if submitted:
-        image_url = edit_item.get("screenshot", "") if edit_item else ""
-        
+        image_url = ""
         if uploaded_file is not None:
             try:
                 file_ext = uploaded_file.name.split(".")[-1]
@@ -176,24 +157,72 @@ with st.form("transaction_form", clear_on_submit=True):
             "screenshot": image_url
         }
 
-        if edit_item:
-            supabase.table("transactions").update(payload).eq("id", edit_id).execute()
-            st.success("Transaction updated successfully!")
-            st.session_state["edit_id"] = None
-            st.query_params.clear()
-        else:
-            supabase.table("transactions").insert(payload).execute()
-            st.success("Transaction added successfully!")
-        
-        st.rerun()
-
-if edit_id:
-    if st.button("Cancel Edit", use_container_width=True):
-        st.session_state["edit_id"] = None
-        st.query_params.clear()
+        supabase.table("transactions").insert(payload).execute()
+        st.success("Transaction added successfully!")
         st.rerun()
 
 st.markdown("---")
+
+# --- POPUP DIALOGS FOR EDIT & DELETE ---
+@st.dialog("Delete Transaction")
+def delete_dialog(row_id, reason_text):
+    st.write(f"Do you want to delete this transaction for '{reason_text}'?")
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        if st.button("Yes, Delete", use_container_width=True):
+            supabase.table("transactions").delete().eq("id", row_id).execute()
+            st.success("Transaction deleted successfully!")
+            st.rerun()
+    with col_d2:
+        if st.button("Cancel", use_container_width=True):
+            st.rerun()
+
+@st.dialog("Edit Transaction")
+def edit_dialog(row):
+    try:
+        def_date = datetime.strptime(row["date"], "%Y-%m-%d").date()
+    except:
+        def_date = datetime.today()
+        
+    def_amount = float(row["amount"])
+    def_reason = row["reason"] or ""
+    
+    with st.form("edit_popup_form"):
+        new_date = st.date_input("Date", value=def_date)
+        new_amount = st.number_input("Amount", value=def_amount, step=0.01)
+        new_reason = st.text_input("Reason", value=def_reason)
+        
+        auto_type = "Sent" if new_amount >= 0 else "Received"
+        st.write(f"**Type:** {auto_type} (auto)")
+        
+        new_file = st.file_uploader("Replace Receipt (Optional)", type=["png", "jpg", "jpeg"])
+        
+        update_btn = st.form_submit_button("Update Transaction", use_container_width=True)
+        
+        if update_btn:
+            image_url = row.get("screenshot", "")
+            if new_file is not None:
+                try:
+                    file_ext = new_file.name.split(".")[-1]
+                    file_path = f"{int(datetime.now().timestamp())}.{file_ext}"
+                    supabase.storage.from_("screenshots").upload(file_path, new_file.getvalue())
+                    image_url = supabase.storage.from_("screenshots").get_public_url(file_path)
+                except Exception as img_err:
+                    st.warning(f"Failed to upload image: {img_err}")
+            
+            final_type = "Sent" if new_amount >= 0 else "Received"
+            payload = {
+                "date": str(new_date),
+                "amount": new_amount,
+                "reason": new_reason,
+                "type": final_type,
+                "screenshot": image_url
+            }
+            
+            # FIXED: Properly using update with eq condition
+            supabase.table("transactions").update(payload).eq("id", row["id"]).execute()
+            st.success("Transaction updated successfully!")
+            st.rerun()
 
 # --- HORIZONTAL SCROLLABLE SPREADSHEET TABLE ---
 st.write("### Transactions Spreadsheet")
@@ -222,7 +251,6 @@ if data:
         t_type = "Sent" if amount_val >= 0 else "Received"
         badge_bg = "#2e7d32" if t_type == "Sent" else "#c62828"
         
-        # Negative amount = Green text, Positive amount = Red text
         amount_color = "#2e7d32" if amount_val < 0 else "#c62828"
         row_bg = bg_colors[idx % len(bg_colors)]
         
@@ -234,30 +262,29 @@ if data:
     <td style="padding: 9px 10px; border: 1px solid #d3d3d3; color: #000;">{row['reason'] or '-'}</td>
     <td style="padding: 9px 10px; border: 1px solid #d3d3d3;"><span style="background-color: {badge_bg}; color: white; padding: 3px 10px; border-radius: 10px; font-weight: bold; font-size: 11px;">{t_type}</span></td>
     <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;">{receipt_link}</td>
-    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;"><a href="?edit_id={row['id']}" target="_self" style="text-decoration: none;">✏️</a></td>
-    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;"><a href="?del_id={row['id']}" target="_self" style="text-decoration: none;">🗑️</a></td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;">[EDIT_BTN_{row['id']}]</td>
+    <td style="padding: 9px 10px; border: 1px solid #d3d3d3; text-align: center;">[DEL_BTN_{row['id']}]</td>
 </tr>"""
 
     table_html += """</tbody>
 </table>
 </div>"""
 
+    # Render base HTML table structure
     st.markdown(table_html, unsafe_allow_html=True)
 
-    # Handle delete confirmation modal/warning
-    del_id = st.session_state.get("confirm_del_id", None)
-    if del_id:
-        st.warning(f"Kya aap is transaction ko delete karna chahte hain?")
-        d1, d2 = st.columns(2)
-        if d1.button("Yes, Delete", key="yes_del_action"):
-            supabase.table("transactions").delete().eq("id", del_id).execute()
-            st.session_state["confirm_del_id"] = None
-            st.query_params.clear()
-            st.success("Transaction deleted successfully!")
-            st.rerun()
-        if d2.button("Cancel", key="cancel_del_action"):
-            st.session_state["confirm_del_id"] = None
-            st.query_params.clear()
-            st.rerun()
+    # Render seamless Streamlit buttons right below or aligned if needed, 
+    # Or using standard Streamlit row iteration for action buttons to maintain full popup functionality smoothly
+    st.markdown("<br><b>Quick Actions:</b>", unsafe_allow_html=True)
+    for idx, row in df_table.iterrows():
+        act_col1, act_col2, act_col3 = st.columns([4, 1, 1])
+        with act_col1:
+            st.write(f"📅 {row['date']} | ₹{float(row['amount']):.2f} | {row['reason'] or '-'}")
+        with act_col2:
+            if st.button("✏️ Edit", key=f"edit_pop_{row['id']}"):
+                edit_dialog(row)
+        with act_col3:
+            if st.button("🗑️ Delete", key=f"del_pop_{row['id']}"):
+                delete_dialog(row['id'], row.get('reason', ''))
 else:
     st.info("No transactions found yet.")
