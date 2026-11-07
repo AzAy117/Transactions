@@ -6,6 +6,29 @@ from datetime import datetime
 # Page configuration
 st.set_page_config(page_title="Transactions Tracker", page_icon="📊", layout="wide")
 
+# --- CUSTOM CSS FOR MOBILE HORIZONTAL SCROLL ---
+st.markdown("""
+<style>
+    /* Mobile par columns ko vertical stack hone se rokne ke liye */
+    @media (max-width: 768px) {
+        [data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+        }
+        [data-testid="column"] {
+            min-width: 90px !important;
+            flex: 1 1 auto !important;
+        }
+    }
+    
+    /* Spreadsheet grid ke liye horizontal scroll wrapper */
+    .scrollable-grid {
+        width: 100%;
+        overflow-x: auto;
+        display: block;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Supabase Credentials initialization from st.secrets
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://ozstskgokzppbfbbubyp.supabase.co")
 SUPABASE_KEY = st.secrets.get("SUPABASE_ANON_KEY", "sb_publishable_JDP0BufPA7MpgLSi8wffMg_i7_64gVO")
