@@ -6,25 +6,13 @@ from datetime import datetime
 # Page configuration
 st.set_page_config(page_title="Transactions Tracker", page_icon="📊", layout="wide")
 
-# --- CUSTOM CSS FOR MOBILE HORIZONTAL SCROLL ---
+# --- CUSTOM CSS FOR MOBILE HORIZONTAL SCROLL & COMPACT COLUMNS ---
 st.markdown("""
 <style>
-    /* Mobile par columns ko vertical stack hone se rokne ke liye */
     @media (max-width: 768px) {
         [data-testid="stHorizontalBlock"] {
             flex-wrap: nowrap !important;
         }
-        [data-testid="column"] {
-            min-width: 90px !important;
-            flex: 1 1 auto !important;
-        }
-    }
-    
-    /* Spreadsheet grid ke liye horizontal scroll wrapper */
-    .scrollable-grid {
-        width: 100%;
-        overflow-x: auto;
-        display: block;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -288,10 +276,13 @@ st.write("### Transactions Spreadsheet")
 
 if data:
     df_table = pd.DataFrame(data)
-    bg_colors = ["#e6f2ff", "#f3e8ff"] # 2 alternating colors: light blue & pinkish/purple
+    bg_colors = ["#e6f2ff", "#f3e8ff"] 
+
+    # Tailored column proportions: [Date, Amount, Reason, Type, Receipt, Edit, Delete]
+    col_widths = [1.2, 1.2, 3.2, 1, 0.8, 0.6, 0.6]
 
     # Spreadsheet Header using Native Columns
-    h_cols = st.columns([2, 2, 3, 1.5, 1.5, 1, 1])
+    h_cols = st.columns(col_widths)
     h_cols[0].markdown("**Date**")
     h_cols[1].markdown("**Amount**")
     h_cols[2].markdown("**Reason**")
@@ -311,30 +302,31 @@ if data:
         row_bg = bg_colors[idx % len(bg_colors)]
         
         # Row Columns matching header exactly
-        r_cols = st.columns([2, 2, 3, 1.5, 1.5, 1, 1], vertical_alignment="center")
+        r_cols = st.columns(col_widths, vertical_alignment="center")
 
         with r_cols[0]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px; border-radius: 4px; color: #000;'>{row['date']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 4px; border-radius: 4px; color: #000; font-size: 12px; white-space: nowrap;'>{row['date']}</div>", unsafe_allow_html=True)
         with r_cols[1]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px; border-radius: 4px;'><b style='color: {amount_color};'>₹{amount_val:.2f}</b></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 4px; border-radius: 4px;'><b style='color: {amount_color}; font-size: 12px; white-space: nowrap;'>₹{amount_val:.2f}</b></div>", unsafe_allow_html=True)
         with r_cols[2]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px; border-radius: 4px; color: #000;'>{row['reason'] or '-'}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 6px; border-radius: 4px; color: #000; font-size: 12px; word-break: break-word;'>{row['reason'] or '-'}</div>", unsafe_allow_html=True)
         with r_cols[3]:
-            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px; border-radius: 4px;'><span style='background-color: {badge_bg}; color: white; padding: 3px 10px; border-radius: 10px; font-weight: bold; font-size: 11px;'>{t_type}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 2px; border-radius: 4px;'><span style='background-color: {badge_bg}; color: white; padding: 2px 6px; border-radius: 8px; font-weight: bold; font-size: 10px; white-space: nowrap;'>{t_type}</span></div>", unsafe_allow_html=True)
         with r_cols[4]:
             if row.get("screenshot"):
-                st.markdown(f"<div style='background-color: {row_bg}; padding: 8px; border-radius: 4px;'><a href='{row['screenshot']}' target='_blank'>View</a></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 2px; border-radius: 4px; text-align: center;'><a href='{row['screenshot']}' target='_blank' style='font-size: 11px;'>View</a></div>", unsafe_allow_html=True)
             else:
-                st.markdown(f"<div style='background-color: {row_bg}; padding: 8px; border-radius: 4px; color: #000;'>-</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 2px; border-radius: 4px; color: #000; text-align: center; font-size: 11px;'>-</div>", unsafe_allow_html=True)
         with r_cols[5]:
             if st.button("✏️", key=f"grid_edit_{row['id']}"):
                 st.session_state.active_edit_id = row['id']
                 st.session_state.active_del_id = None
-                st.rerun()
+                st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
         with r_cols[6]:
             if st.button("🗑️", key=f"grid_del_{row['id']}"):
+            
                 st.session_state.active_del_id = row['id']
                 st.session_state.active_edit_id = None
-                st.rerun()
+                st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
 else:
     st.info("No transactions found yet.")
