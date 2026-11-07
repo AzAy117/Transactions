@@ -142,7 +142,7 @@ with st.form("transaction_form", clear_on_submit=True):
     with col_f3:
         reason_val = st.text_input("Reason", value="")
     with col_f4:
-        auto_type = "Sent" if amount_val >= 0 else "Received"
+        auto_type = "Sent" if (amount_val is not None and amount_val >= 0) else "Received"
         st.write(f"**Type:** {auto_type} (auto)")
 
     uploaded_file = st.file_uploader("Screenshot / Receipt (Optional)", type=["png", "jpg", "jpeg"])
