@@ -133,11 +133,11 @@ with st.form("transaction_form", clear_on_submit=True):
         date_val = st.date_input("Date", value=datetime.today())
     with col_f2:
         amount_val = st.number_input(
-            "Amount", 
-            value=None, 
-            step=0.01, 
+            "Amount",
+            value=None,
+            step=0.01,
             format="%.2f",
-            placeholder="Enter the amount" # Optional: adds placeholder text
+            placeholder="Enter the amount"
         )
     with col_f3:
         reason_val = st.text_input("Reason", value="")
@@ -150,28 +150,29 @@ with st.form("transaction_form", clear_on_submit=True):
     submitted = st.form_submit_button("Add Transaction", use_container_width=True)
 
     if submitted:
-        image_url = ""
-        if uploaded_file is not None:
-            try:
-                file_ext = uploaded_file.name.split(".")[-1]
-                file_path = f"{int(datetime.now().timestamp())}.{file_ext}"
-                supabase.storage.from_("screenshots").upload(file_path, uploaded_file.getvalue())
-                image_url = supabase.storage.from_("screenshots").get_public_url(file_path)
-            except Exception as img_err:
-                st.warning(f"Failed to upload image: {img_err}")
+        if amount_val is None:
+            st.error("Please enter a valid amount.")
+        else:
+            image_url = ""
+            if uploaded_file is not None:
+                try:
+                    file_ext = uploaded_file.name.split(".")[-1]
+                    file_path = f"{int(datetime.now().timestamp())}.{file_ext}"
+                    supabase.storage.from_("screenshots").upload(file_path, uploaded_file.getvalue())
+                    image_url = supabase.storage.from_("screenshots").get_public_url(file_path)
+                except Exception as img_err:
+                    st.warning(f"Failed to upload image: {img_err}")
 
-        final_type = "Sent" if amount_val >= 0 else "Received"
-        payload = {
-            "date": str(date_val),
-            "amount": amount_val,
-            "reason": reason_val,
-            "type": final_type,
-            "screenshot": image_url
-        }
+            payload = {
+                "date": str(date_val),
+                "amount": amount_val,
+                "reason": reason_val,
+                "screenshot": image_url
+            }
 
-        supabase.table("transactions").insert(payload).execute()
-        st.success("Transaction added successfully!")
-        st.rerun()
+            supabase.table("transactions").insert(payload).execute()
+            st.success("Transaction added successfully!")
+            st.rerun()
 
 st.markdown("---")
 
@@ -192,11 +193,17 @@ if st.session_state.active_edit_id:
             with ie_col1:
                 new_date = st.date_input("Date", value=def_date)
             with ie_col2:
-                new_amount = st.number_input("Amount", value=def_amount, step=0.01)
+                new_amount = st.number_input(
+                    "Amount",
+                    value=def_amount,
+                    step=0.01,
+                    format="%.2f",
+                    placeholder="Enter the amount"
+                )
             with ie_col3:
                 new_reason = st.text_input("Reason", value=def_reason)
             with ie_col4:
-                auto_type = "Sent" if new_amount >= 0 else "Received"
+                auto_type = "Sent" if (new_amount is not None and new_amount >= 0) else "Received"
                 st.write(f"**Type:** {auto_type} (auto)")
 
             new_file = st.file_uploader("Replace Receipt (Optional)", type=["png", "jpg", "jpeg"])
@@ -212,29 +219,30 @@ if st.session_state.active_edit_id:
                 st.rerun()
 
             if save_update:
-                image_url = edit_item.get("screenshot", "")
-                if new_file is not None:
-                    try:
-                        file_ext = new_file.name.split(".")[-1]
-                        file_path = f"{int(datetime.now().timestamp())}.{file_ext}"
-                        supabase.storage.from_("screenshots").upload(file_path, new_file.getvalue())
-                        image_url = supabase.storage.from_("screenshots").get_public_url(file_path)
-                    except Exception as img_err:
-                        st.warning(f"Failed to upload image: {img_err}")
+                if new_amount is None:
+                    st.error("Please enter a valid amount.")
+                else:
+                    image_url = edit_item.get("screenshot", "")
+                    if new_file is not None:
+                        try:
+                            file_ext = new_file.name.split(".")[-1]
+                            file_path = f"{int(datetime.now().timestamp())}.{file_ext}"
+                            supabase.storage.from_("screenshots").upload(file_path, new_file.getvalue())
+                            image_url = supabase.storage.from_("screenshots").get_public_url(file_path)
+                        except Exception as img_err:
+                            st.warning(f"Failed to upload image: {img_err}")
 
-                final_type = "Sent" if new_amount >= 0 else "Received"
-                payload = {
-                    "date": str(new_date),
-                    "amount": new_amount,
-                    "reason": new_reason,
-                    "type": final_type,
-                    "screenshot": image_url
-                }
+                    payload = {
+                        "date": str(new_date),
+                        "amount": new_amount,
+                        "reason": new_reason,
+                        "screenshot": image_url
+                    }
 
-                supabase.table("transactions").update(payload).eq("id", st.session_state.active_edit_id).execute()
-                st.success("Transaction updated successfully on Cloud!")
-                st.session_state.active_edit_id = None
-                st.rerun()
+                    supabase.table("transactions").update(payload).eq("id", st.session_state.active_edit_id).execute()
+                    st.success("Transaction updated successfully on Cloud!")
+                    st.session_state.active_edit_id = None
+                    st.rerun()
 
 if st.session_state.active_del_id:
     del_item = next((t for t in data if str(t["id"]) == str(st.session_state.active_del_id)), None)
