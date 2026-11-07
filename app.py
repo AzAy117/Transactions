@@ -132,7 +132,13 @@ with st.form("transaction_form", clear_on_submit=True):
     with col_f1:
         date_val = st.date_input("Date", value=datetime.today())
     with col_f2:
-        amount_val = st.number_input("Amount", value=0, step=0.1)
+        amount_val = st.number_input(
+            "Amount", 
+            value=None, 
+            step=0.01, 
+            format="%.2f",
+            placeholder="Enter the amount"
+        )
     with col_f3:
         reason_val = st.text_input("Reason", value="")
     with col_f4:
