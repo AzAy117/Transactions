@@ -6,18 +6,25 @@ from datetime import datetime
 # Page configuration
 st.set_page_config(page_title="Transactions Tracker", page_icon="📊", layout="wide")
 
-# --- CUSTOM CSS FOR MOBILE HORIZONTAL SCROLL & COMPACT COLUMNS ---
+# --- CUSTOM CSS FOR MOBILE HORIZONTAL SCROLL & COLUMN WIDTH CONSTRAINTS ---
 st.markdown("""
 <style>
     @media (max-width: 768px) {
-        [data-testid="stHorizontalBlock"] {
+        .custom-spreadsheet [data-testid="stHorizontalBlock"] {
             flex-wrap: nowrap !important;
         }
+        .custom-spreadsheet [data-testid="stHorizontalBlock"] > div:nth-child(1) { min-width: 85px !important; flex: 0 0 85px !important; } /* Date */
+        .custom-spreadsheet [data-testid="stHorizontalBlock"] > div:nth-child(2) { min-width: 95px !important; flex: 0 0 95px !important; } /* Amount */
+        .custom-spreadsheet [data-testid="stHorizontalBlock"] > div:nth-child(3) { min-width: 160px !important; flex: 0 0 160px !important; } /* Reason */
+        .custom-spreadsheet [data-testid="stHorizontalBlock"] > div:nth-child(4) { min-width: 75px !important; flex: 0 0 75px !important; } /* Type */
+        .custom-spreadsheet [data-testid="stHorizontalBlock"] > div:nth-child(5) { min-width: 60px !important; flex: 0 0 60px !important; } /* Receipt */
+        .custom-spreadsheet [data-testid="stHorizontalBlock"] > div:nth-child(6),
+        .custom-spreadsheet [data-testid="stHorizontalBlock"] > div:nth-child(7) { min-width: 45px !important; flex: 0 0 45px !important; } /* Edit & Delete */
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Supabase Credentials initialization from st.secrets
+# Supabase credentials initialization from Streamlit secrets
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://ozstskgokzppbfbbubyp.supabase.co")
 SUPABASE_KEY = st.secrets.get("SUPABASE_ANON_KEY", "sb_publishable_JDP0BufPA7MpgLSi8wffMg_i7_64gVO")
 
@@ -29,13 +36,13 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.title("📊 Transactions Tracker")
 
-# Initialize Session State for seamless inline editing & deleting
+# Initialize Session State for seamless inline editing and deletion
 if "active_edit_id" not in st.session_state:
     st.session_state.active_edit_id = None
 if "active_del_id" not in st.session_state:
     st.session_state.active_del_id = None
 
-# Fetch data from Supabase
+# Fetch data from Supabase database
 def fetch_data():
     try:
         response = supabase.table("transactions").select("*").order("date", desc=False).execute()
@@ -45,16 +52,16 @@ def fetch_data():
             r["type"] = "Sent" if amt >= 0 else "Received"
         return rows
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
+        st.error(f"Error fetching data from database: {e}")
         return []
 
 data = fetch_data()
 
-# Calculate Totals (Sent = Gives, Received = Takes)
+# Calculate totals (Sent = Gives, Received = Takes)
 total_gives = sum([abs(float(t["amount"])) for t in data if t.get("type") == "Sent"]) if data else 0
 total_takes = sum([abs(float(t["amount"])) for t in data if t.get("type") == "Received"]) if data else 0
 
-# Correct Balance Calculation: Received (Takes) - Sent (Gives)
+# Correct net balance calculation: Received (Takes) - Sent (Gives)
 total = total_takes - total_gives
 
 # --- TOTAL BALANCE & SUMMARY (Centered Alignment) ---
@@ -187,7 +194,7 @@ with st.form("transaction_form", clear_on_submit=True):
 
 st.markdown("---")
 
-# --- ACTIVE EDIT / DELETE FORMS (POPUP SECTIONS) ---
+# --- ACTIVE EDIT / DELETE FORMS ---
 if st.session_state.active_edit_id:
     edit_item = next((t for t in data if str(t["id"]) == str(st.session_state.active_edit_id)), None)
     if edit_item:
@@ -274,14 +281,15 @@ if st.session_state.active_del_id:
 # --- UNIFIED SPREADSHEET GRID WITH EMBEDDED ROW ACTIONS ---
 st.write("### Transactions Spreadsheet")
 
+# Wrapping inside custom-spreadsheet class for strict mobile column width management
+st.markdown('<div class="custom-spreadsheet">', unsafe_allow_html=True)
+
 if data:
     df_table = pd.DataFrame(data)
     bg_colors = ["#e6f2ff", "#f3e8ff"] 
 
-    # Tailored column proportions: [Date, Amount, Reason, Type, Receipt, Edit, Delete]
     col_widths = [1.2, 1.2, 3.2, 1, 0.8, 0.6, 0.6]
 
-    # Spreadsheet Header using Native Columns
     h_cols = st.columns(col_widths)
     h_cols[0].markdown("**Date**")
     h_cols[1].markdown("**Amount**")
@@ -301,7 +309,6 @@ if data:
         amount_color = "#2e7d32" if amount_val < 0 else "#c62828"
         row_bg = bg_colors[idx % len(bg_colors)]
         
-        # Row Columns matching header exactly
         r_cols = st.columns(col_widths, vertical_alignment="center")
 
         with r_cols[0]:
@@ -324,9 +331,10 @@ if data:
                 st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
         with r_cols[6]:
             if st.button("🗑️", key=f"grid_del_{row['id']}"):
-            
                 st.session_state.active_del_id = row['id']
                 st.session_state.active_edit_id = None
                 st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
 else:
     st.info("No transactions found yet.")
+
+st.markdown('</div>', unsafe_allow_html=True)
