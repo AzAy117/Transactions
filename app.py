@@ -6,50 +6,23 @@ from datetime import datetime
 # Page configuration
 st.set_page_config(page_title="Transactions Tracker", page_icon="📊", layout="wide")
 
-# --- CUSTOM CSS FOR PURE HTML TABLE & MOBILE HORIZONTAL SCROLL ---
+# --- CUSTOM CSS FOR MOBILE HORIZONTAL SCROLL & STRICT COLUMN WIDTHS ---
 st.markdown("""
 <style>
-    /* Main container styling to mimic a clean spreadsheet */
-    .table-responsive-container {
-        width: 100%;
-        overflow-x: auto;
-        margin-top: 10px;
-        margin-bottom: 20px;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        background-color: #ffffff;
-    }
-    .custom-html-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-family: sans-serif;
-        font-size: 13px;
-        color: #000000;
-        min-width: 650px; /* Forces horizontal scroll on smaller screens instead of wrapping */
-    }
-    .custom-html-table th {
-        background-color: #f8f9fa;
-        color: #333333;
-        font-weight: bold;
-        text-align: left;
-        padding: 10px 12px;
-        border-bottom: 2px solid #dee2e6;
-        white-space: nowrap;
-    }
-    .custom-html-table td {
-        padding: 10px 12px;
-        border-bottom: 1px solid #eee;
-        vertical-align: middle;
-        white-space: nowrap;
-    }
-    .custom-html-table tr:nth-child(even) {
-        background-color: #fcfcfc;
-    }
-    /* Action buttons styling inside table */
-    .action-btn-form {
-        display: inline-block;
-        margin: 0;
-        padding: 0;
+    @media (max-width: 768px) {
+        /* Force horizontal scrolling and prevent wrapping for spreadsheet rows */
+        .spreadsheet-wrapper [data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+        }
+        /* Exact fixed widths for each column to keep them compact on mobile */
+        .spreadsheet-wrapper [data-testid="stHorizontalBlock"] > div:nth-child(1) { min-width: 90px !important; flex: 0 0 90px !important; } /* Date */
+        .spreadsheet-wrapper [data-testid="stHorizontalBlock"] > div:nth-child(2) { min-width: 100px !important; flex: 0 0 100px !important; } /* Amount */
+        .spreadsheet-wrapper [data-testid="stHorizontalBlock"] > div:nth-child(3) { min-width: 150px !important; flex: 0 0 150px !important; } /* Reason */
+        .spreadsheet-wrapper [data-testid="stHorizontalBlock"] > div:nth-child(4) { min-width: 80px !important; flex: 0 0 80px !important; } /* Type */
+        .spreadsheet-wrapper [data-testid="stHorizontalBlock"] > div:nth-child(5) { min-width: 65px !important; flex: 0 0 65px !important; } /* Receipt */
+        .spreadsheet-wrapper [data-testid="stHorizontalBlock"] > div:nth-child(6),
+        .spreadsheet-wrapper [data-testid="stHorizontalBlock"] > div:nth-child(7) { min-width: 50px !important; flex: 0 0 50px !important; } /* Edit & Delete */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -308,76 +281,65 @@ if st.session_state.active_del_id:
                 st.session_state.active_del_id = None
                 st.rerun()
 
-# --- UNIFIED SPREADSHEET GRID USING PURE HTML TABLE ---
+# --- UNIFIED SPREADSHEET GRID WITH NATIVE COLUMNS & WRAPPER ---
 st.write("### Transactions Spreadsheet")
+
+# Wrap the spreadsheet inside a custom container for targeted CSS rules
+st.markdown('<div class="spreadsheet-wrapper">', unsafe_allow_html=True)
 
 if data:
     df_table = pd.DataFrame(data)
-    
-    # Build HTML table string to prevent stacking on mobile devices
-    html_content = """
-    <div class="table-responsive-container">
-        <table class="custom-html-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Amount</th>
-                    <th>Reason</th>
-                    <th>Type</th>
-                    <th>Receipt</th>
-                    <th>Edit</th>
-                    <th>Delete</th>
-                </tr>
-            </thead>
-            <tbody>
-    """
-    
+    bg_colors = ["#e6f2ff", "#f3e8ff"] 
+
+    col_widths = [1.2, 1.2, 3.2, 1, 0.8, 0.6, 0.6]
+
+    # Spreadsheet Header using Native Columns
+    h_cols = st.columns(col_widths)
+    h_cols[0].markdown("**Date**")
+    h_cols[1].markdown("**Amount**")
+    h_cols[2].markdown("**Reason**")
+    h_cols[3].markdown("**Type**")
+    h_cols[4].markdown("**Receipt**")
+    h_cols[5].markdown("**Edit**")
+    h_cols[6].markdown("**Delete**")
+
+    st.markdown("<hr style='margin: 5px 0 10px 0;'>", unsafe_allow_html=True)
+
     for idx, row in df_table.iterrows():
         amount_val = float(row['amount'])
         t_type = "Sent" if amount_val >= 0 else "Received"
         badge_bg = "#2e7d32" if t_type == "Sent" else "#c62828"
+        
+        # Proper coloring logic: Negative = Green (Takes/Received), Positive = Red (Gives/Sent)
         amount_color = "#2e7d32" if amount_val < 0 else "#c62828"
+        row_bg = bg_colors[idx % len(bg_colors)]
         
-        date_str = row['date']
-        reason_str = row['reason'] or '-'
-        screenshot_link = f"<a href='{row['screenshot']}' target='_blank'>View</a>" if row.get("screenshot") else "-"
-        
-        html_content += f"""
-                <tr>
-                    <td>{date_str}</td>
-                    <td><b style="color: {amount_color};">₹{amount_val:.2f}</b></td>
-                    <td>{reason_str}</td>
-                    <td><span style="background-color: {badge_bg}; color: white; padding: 2px 8px; border-radius: 8px; font-weight: bold; font-size: 10px;">{t_type}</span></td>
-                    <td>{screenshot_link}</td>
-                    <td></td>
-                    <td></td>
-                </tr>
-        """
-        
-    html_content += """
-            </tbody>
-        </table>
-    </div>
-    """
-    
-    # Render the pure HTML table
-    st.markdown(html_content, unsafe_allow_html=True)
-    
-    # Render interactive Streamlit action buttons underneath or alongside each row cleanly
-    st.write("#### Quick Row Actions")
-    for idx, row in df_table.iterrows():
-        r_cols = st.columns([3, 1, 1])
+        r_cols = st.columns(col_widths, vertical_alignment="center")
+
         with r_cols[0]:
-            st.text(f"{row['date']} | ₹{float(row['amount']):.2f} | {row['reason'] or '-'}")
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 4px; border-radius: 4px; color: #000; font-size: 12px; white-space: nowrap;'>{row['date']}</div>", unsafe_allow_html=True)
         with r_cols[1]:
-            if st.button("✏️ Edit", key=f"html_edit_{row['id']}"):
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 4px; border-radius: 4px;'><b style='color: {amount_color}; font-size: 12px; white-space: nowrap;'>₹{amount_val:.2f}</b></div>", unsafe_allow_html=True)
+        with r_cols[2]:
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 6px; border-radius: 4px; color: #000; font-size: 12px; word-break: break-word;'>{row['reason'] or '-'}</div>", unsafe_allow_html=True)
+        with r_cols[3]:
+            st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 2px; border-radius: 4px;'><span style='background-color: {badge_bg}; color: white; padding: 2px 6px; border-radius: 8px; font-weight: bold; font-size: 10px; white-space: nowrap;'>{t_type}</span></div>", unsafe_allow_html=True)
+        with r_cols[4]:
+            if row.get("screenshot"):
+                st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 2px; border-radius: 4px; text-align: center;'><a href='{row['screenshot']}' target='_blank' style='font-size: 11px;'>View</a></div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='background-color: {row_bg}; padding: 8px 2px; border-radius: 4px; color: #000; text-align: center; font-size: 11px;'>-</div>", unsafe_allow_html=True)
+        with r_cols[5]:
+            if st.button("✏️", key=f"grid_edit_{row['id']}"):
                 st.session_state.active_edit_id = row['id']
                 st.session_state.active_del_id = None
                 st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
-        with r_cols[2]:
-            if st.button("🗑️ Delete", key=f"html_del_{row['id']}"):
+        with r_cols[6]:
+            if st.button("🗑️", key=f"grid_del_{row['id']}"):
                 st.session_state.active_del_id = row['id']
                 st.session_state.active_edit_id = None
                 st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
 else:
     st.info("No transactions found yet.")
+
+st.markdown('</div>', unsafe_allow_html=True)
